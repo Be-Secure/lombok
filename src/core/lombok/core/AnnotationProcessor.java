@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2014 The Project Lombok Authors.
+ * Copyright (C) 2009-2018 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +26,9 @@ import static lombok.core.Augments.ClassLoader_lombokAlreadyAddedTo;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,13 +42,16 @@ import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic.Kind;
 
 import lombok.patcher.ClassRootFinder;
+import lombok.permit.Permit;
 
 @SupportedAnnotationTypes("*")
 public class AnnotationProcessor extends AbstractProcessor {
+	
 	private static String trace(Throwable t) {
 		StringWriter w = new StringWriter();
 		t.printStackTrace(new PrintWriter(w, true));
@@ -63,19 +68,87 @@ public class AnnotationProcessor extends AbstractProcessor {
 	private final List<ProcessorDescriptor> active = new ArrayList<ProcessorDescriptor>();
 	private final List<String> delayedWarnings = new ArrayList<String>();
 	
+	/**
+	 * This method is a simplified version of {@link lombok.javac.apt.LombokProcessor#getJavacProcessingEnvironment}
+	 * It simply returns the processing environment, but in case of gradle incremental compilation,
+	 * the delegate ProcessingEnvironment of the gradle wrapper is returned.
+	 */
+	public static ProcessingEnvironment getJavacProcessingEnvironment(ProcessingEnvironment procEnv, List<String> delayedWarnings) {
+		return tryRecursivelyObtainJavacProcessingEnvironment(procEnv);
+	}
+	
+	private static ProcessingEnvironment tryRecursivelyObtainJavacProcessingEnvironment(ProcessingEnvironment procEnv) {
+		if (procEnv.getClass().getName().equals("com.sun.tools.javac.processing.JavacProcessingEnvironment")) {
+			return procEnv;
+		}
+		
+		for (Class<?> procEnvClass = procEnv.getClass(); procEnvClass != null; procEnvClass = procEnvClass.getSuperclass()) {
+			try {
+				Object delegate = tryGetDelegateField(procEnvClass, procEnv);
+				if (delegate == null) delegate = tryGetProcessingEnvField(procEnvClass, procEnv);
+				if (delegate == null) delegate = tryGetProxyDelegateToField(procEnvClass, procEnv);
+
+				if (delegate != null) return tryRecursivelyObtainJavacProcessingEnvironment((ProcessingEnvironment) delegate);
+			} catch (final Exception e) {
+				// no valid delegate, try superclass
+			}
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Gradle incremental processing
+	 */
+	private static Object tryGetDelegateField(Class<?> delegateClass, Object instance) {
+		try {
+			return Permit.getField(delegateClass, "delegate").get(instance);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+	
+	/**
+	 * Kotlin incremental processing
+	 */
+	private static Object tryGetProcessingEnvField(Class<?> delegateClass, Object instance) {
+		try {
+			return Permit.getField(delegateClass, "processingEnv").get(instance);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+	
+	/**
+	 * IntelliJ IDEA >= 2020.3
+	 */
+	private static Object tryGetProxyDelegateToField(Class<?> delegateClass, Object instance) {
+		try {
+			InvocationHandler handler = Proxy.getInvocationHandler(instance);
+			return Permit.getField(handler.getClass(), "val$delegateTo").get(handler);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+	
 	static class JavacDescriptor extends ProcessorDescriptor {
 		private Processor processor;
 		
 		@Override String getName() {
-			return "sun/apple javac 1.6";
+			return "OpenJDK javac";
 		}
 		
 		@Override boolean want(ProcessingEnvironment procEnv, List<String> delayedWarnings) {
-			if (!procEnv.getClass().getName().equals("com.sun.tools.javac.processing.JavacProcessingEnvironment")) return false;
+			// do not run on ECJ as it may print warnings
+			if (procEnv.getClass().getName().startsWith("org.eclipse.jdt.")) return false;
+			
+			ProcessingEnvironment javacProcEnv = getJavacProcessingEnvironment(procEnv, delayedWarnings);
+			
+			if (javacProcEnv == null) return false;
 			
 			try {
-				ClassLoader classLoader = findAndPatchClassLoader(procEnv);
-				processor = (Processor) Class.forName("lombok.javac.apt.LombokProcessor", false, classLoader).newInstance();
+				ClassLoader classLoader = findAndPatchClassLoader(javacProcEnv);
+				processor = (Processor) Class.forName("lombok.javac.apt.LombokProcessor", false, classLoader).getConstructor().newInstance();
 			} catch (Exception e) {
 				delayedWarnings.add("You found a bug in lombok; lombok.javac.apt.LombokProcessor is not available. Lombok will not run during this compilation: " + trace(e));
 				return false;
@@ -99,9 +172,9 @@ public class AnnotationProcessor extends AbstractProcessor {
 			ClassLoader environmentClassLoader = procEnv.getClass().getClassLoader();
 			if (environmentClassLoader != null && environmentClassLoader.getClass().getCanonicalName().equals("org.codehaus.plexus.compiler.javac.IsolatedClassLoader")) {
 				if (!ClassLoader_lombokAlreadyAddedTo.getAndSet(environmentClassLoader, true)) {
-					Method m = environmentClassLoader.getClass().getDeclaredMethod("addURL", URL.class);
+					Method m = Permit.getMethod(environmentClassLoader.getClass(), "addURL", URL.class);
 					URL selfUrl = new File(ClassRootFinder.findClassRootOfClass(AnnotationProcessor.class)).toURI().toURL();
-					m.invoke(environmentClassLoader, selfUrl);
+					Permit.invoke(m, environmentClassLoader, selfUrl);
 				}
 			}
 			
@@ -146,8 +219,12 @@ public class AnnotationProcessor extends AbstractProcessor {
 				if (supported.length() > 0) supported.append(", ");
 				supported.append(proc.getName());
 			}
-			procEnv.getMessager().printMessage(Kind.WARNING, String.format("You aren't using a compiler supported by lombok, so lombok will not work and has been disabled.\n" +
+			if (procEnv.getClass().getName().equals("com.google.turbine.processing.TurbineProcessingEnvironment")) {
+				procEnv.getMessager().printMessage(Kind.ERROR, String.format("Turbine is not currently supported by lombok."));
+			} else {
+				procEnv.getMessager().printMessage(Kind.WARNING, String.format("You aren't using a compiler supported by lombok, so lombok will not work and has been disabled.\n" +
 					"Your processor is: %s\nLombok supports: %s", procEnv.getClass().getName(), supported));
+			}
 		}
 	}
 	
@@ -163,13 +240,27 @@ public class AnnotationProcessor extends AbstractProcessor {
 		
 		for (ProcessorDescriptor proc : active) proc.process(annotations, roundEnv);
 		
-		return false;
+		boolean onlyLombok = true;
+		boolean zeroElems = true;
+		for (TypeElement elem : annotations) {
+			zeroElems = false;
+			Name n = elem.getQualifiedName();
+			if (n.toString().startsWith("lombok.")) continue;
+			onlyLombok = false;
+		}
+		
+		// Normally we rely on the claiming processor to claim away all lombok annotations.
+		// One of the many Java9 oversights is that this 'process' API has not been fixed to address the point that 'files I want to look at' and 'annotations I want to claim' must be one and the same,
+		// and yet in java9 you can no longer have 2 providers for the same service, thus, if you go by module path, lombok no longer loads the ClaimingProcessor.
+		// This doesn't do as good a job, but it'll have to do. The only way to go from here, I think, is either 2 modules, or use reflection hackery to add ClaimingProcessor during our init.
+		
+		return onlyLombok && !zeroElems;
 	}
 	
 	/**
 	 * We just return the latest version of whatever JDK we run on. Stupid? Yeah, but it's either that or warnings on all versions but 1. Blame Joe.
 	 */
 	@Override public SourceVersion getSupportedSourceVersion() {
-		return SourceVersion.values()[SourceVersion.values().length - 1];
+		return SourceVersion.latest();
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2015 The Project Lombok Authors.
+ * Copyright (C) 2009-2021 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -36,15 +36,20 @@ import java.util.Set;
 import lombok.AccessLevel;
 import lombok.ConfigurationKeys;
 import lombok.EqualsAndHashCode;
+import lombok.EqualsAndHashCode.CacheStrategy;
 import lombok.core.AST.Kind;
 import lombok.core.handlers.HandlerUtil;
+import lombok.core.handlers.InclusionExclusionUtils;
+import lombok.core.handlers.InclusionExclusionUtils.Included;
 import lombok.core.AnnotationValues;
 import lombok.core.configuration.CallSuperType;
+import lombok.core.configuration.CheckerFrameworkVersion;
+import lombok.core.configuration.NullAnnotationLibrary;
 import lombok.eclipse.Eclipse;
 import lombok.eclipse.EclipseAnnotationHandler;
 import lombok.eclipse.EclipseNode;
-import lombok.eclipse.handlers.EclipseHandlerUtil.FieldAccess;
 import lombok.eclipse.handlers.EclipseHandlerUtil.MemberExistsResult;
+import lombok.spi.Provides;
 
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
@@ -58,10 +63,12 @@ import org.eclipse.jdt.internal.compiler.ast.EqualExpression;
 import org.eclipse.jdt.internal.compiler.ast.Expression;
 import org.eclipse.jdt.internal.compiler.ast.FalseLiteral;
 import org.eclipse.jdt.internal.compiler.ast.FieldDeclaration;
+import org.eclipse.jdt.internal.compiler.ast.FieldReference;
 import org.eclipse.jdt.internal.compiler.ast.IfStatement;
 import org.eclipse.jdt.internal.compiler.ast.InstanceOfExpression;
 import org.eclipse.jdt.internal.compiler.ast.IntLiteral;
 import org.eclipse.jdt.internal.compiler.ast.LocalDeclaration;
+import org.eclipse.jdt.internal.compiler.ast.MarkerAnnotation;
 import org.eclipse.jdt.internal.compiler.ast.MessageSend;
 import org.eclipse.jdt.internal.compiler.ast.MethodDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.NameReference;
@@ -69,7 +76,6 @@ import org.eclipse.jdt.internal.compiler.ast.NullLiteral;
 import org.eclipse.jdt.internal.compiler.ast.OperatorIds;
 import org.eclipse.jdt.internal.compiler.ast.ParameterizedQualifiedTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.ParameterizedSingleTypeReference;
-import org.eclipse.jdt.internal.compiler.ast.QualifiedNameReference;
 import org.eclipse.jdt.internal.compiler.ast.QualifiedTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.ReturnStatement;
 import org.eclipse.jdt.internal.compiler.ast.SingleNameReference;
@@ -85,31 +91,41 @@ import org.eclipse.jdt.internal.compiler.ast.Wildcard;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
 import org.eclipse.jdt.internal.compiler.lookup.TypeIds;
-import org.mangosdk.spi.ProviderFor;
 
 /**
  * Handles the {@code EqualsAndHashCode} annotation for eclipse.
  */
-@ProviderFor(EclipseAnnotationHandler.class)
+@Provides
 public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndHashCode> {
 	
+	private static final String HASH_CODE_CACHE_NAME = "$hashCodeCache";
+	
+	private final char[] HASH_CODE_CACHE_NAME_ARR = HASH_CODE_CACHE_NAME.toCharArray();
 	private final char[] PRIME = "PRIME".toCharArray();
 	private final char[] RESULT = "result".toCharArray();
 	
 	public static final Set<String> BUILT_IN_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
 			"byte", "short", "int", "long", "char", "boolean", "double", "float")));
 	
-	public void checkForBogusFieldNames(EclipseNode type, AnnotationValues<EqualsAndHashCode> annotation) {
-		if (annotation.isExplicit("exclude")) {
-			for (int i : createListOfNonExistentFields(Arrays.asList(annotation.getInstance().exclude()), type, true, true)) {
-				annotation.setWarning("exclude", "This field does not exist, or would have been excluded anyway.", i);
-			}
-		}
-		if (annotation.isExplicit("of")) {
-			for (int i : createListOfNonExistentFields(Arrays.asList(annotation.getInstance().of()), type, false, false)) {
-				annotation.setWarning("of", "This field does not exist.", i);
-			}
-		}
+	@Override public void handle(AnnotationValues<EqualsAndHashCode> annotation, Annotation ast, EclipseNode annotationNode) {
+		handleFlagUsage(annotationNode, ConfigurationKeys.EQUALS_AND_HASH_CODE_FLAG_USAGE, "@EqualsAndHashCode");
+		
+		EqualsAndHashCode ann = annotation.getInstance();
+		List<Included<EclipseNode, EqualsAndHashCode.Include>> members = InclusionExclusionUtils.handleEqualsAndHashCodeMarking(annotationNode.up(), annotation, annotationNode);
+		if (members == null) return;
+		
+		List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@EqualsAndHashCode(onParam", annotationNode);
+		
+		Boolean callSuper = ann.callSuper();
+		if (!annotation.isExplicit("callSuper")) callSuper = null;
+		
+		Boolean doNotUseGettersConfiguration = annotationNode.getAst().readConfiguration(ConfigurationKeys.EQUALS_AND_HASH_CODE_DO_NOT_USE_GETTERS);
+		boolean doNotUseGetters = annotation.isExplicit("doNotUseGetters") || doNotUseGettersConfiguration == null ? ann.doNotUseGetters() : doNotUseGettersConfiguration;
+		FieldAccess fieldAccess = doNotUseGetters ? FieldAccess.PREFER_FIELD : FieldAccess.GETTER;
+		
+		boolean cacheHashCode = ann.cacheStrategy() == CacheStrategy.LAZY;
+		
+		generateMethods(annotationNode.up(), annotationNode, members, callSuper, true, cacheHashCode, fieldAccess, onParam);
 	}
 	
 	public void generateEqualsAndHashCodeForType(EclipseNode typeNode, EclipseNode errorNode) {
@@ -118,117 +134,34 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			return;
 		}
 		
+		List<Included<EclipseNode, EqualsAndHashCode.Include>> members = InclusionExclusionUtils.handleEqualsAndHashCodeMarking(typeNode, null, null);
+		
 		Boolean doNotUseGettersConfiguration = typeNode.getAst().readConfiguration(ConfigurationKeys.EQUALS_AND_HASH_CODE_DO_NOT_USE_GETTERS);
 		FieldAccess access = doNotUseGettersConfiguration == null || !doNotUseGettersConfiguration ? FieldAccess.GETTER : FieldAccess.PREFER_FIELD;
 		
-		generateMethods(typeNode, errorNode, null, null, null, false, access, new ArrayList<Annotation>());
+		generateMethods(typeNode, errorNode, members, null, false, false, access, new ArrayList<Annotation>());
 	}
 	
-	@Override public void handle(AnnotationValues<EqualsAndHashCode> annotation, Annotation ast, EclipseNode annotationNode) {
-		handleFlagUsage(annotationNode, ConfigurationKeys.EQUALS_AND_HASH_CODE_FLAG_USAGE, "@EqualsAndHashCode");
+	public void generateMethods(EclipseNode typeNode, EclipseNode errorNode, List<Included<EclipseNode, EqualsAndHashCode.Include>> members,
+		Boolean callSuper, boolean whineIfExists, boolean cacheHashCode, FieldAccess fieldAccess, List<Annotation> onParam) {
 		
-		EqualsAndHashCode ann = annotation.getInstance();
-		List<String> excludes = Arrays.asList(ann.exclude());
-		List<String> includes = Arrays.asList(ann.of());
-		EclipseNode typeNode = annotationNode.up();
-		
-		List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@EqualsAndHashCode(onParam", annotationNode);
-		checkForBogusFieldNames(typeNode, annotation);
-		
-		Boolean callSuper = ann.callSuper();
-		if (!annotation.isExplicit("callSuper")) callSuper = null;
-		if (!annotation.isExplicit("exclude")) excludes = null;
-		if (!annotation.isExplicit("of")) includes = null;
-		
-		if (excludes != null && includes != null) {
-			excludes = null;
-			annotation.setWarning("exclude", "exclude and of are mutually exclusive; the 'exclude' parameter will be ignored.");
-		}
-		
-		Boolean doNotUseGettersConfiguration = annotationNode.getAst().readConfiguration(ConfigurationKeys.EQUALS_AND_HASH_CODE_DO_NOT_USE_GETTERS);
-		boolean doNotUseGetters = annotation.isExplicit("doNotUseGetters") || doNotUseGettersConfiguration == null ? ann.doNotUseGetters() : doNotUseGettersConfiguration;
-		FieldAccess fieldAccess = doNotUseGetters ? FieldAccess.PREFER_FIELD : FieldAccess.GETTER;
-		
-		generateMethods(typeNode, annotationNode, excludes, includes, callSuper, true, fieldAccess, onParam);
-	}
-	
-	public void generateMethods(EclipseNode typeNode, EclipseNode errorNode, List<String> excludes, List<String> includes,
-			Boolean callSuper, boolean whineIfExists, FieldAccess fieldAccess, List<Annotation> onParam) {
-		assert excludes == null || includes == null;
-		
-		TypeDeclaration typeDecl = null;
-		
-		if (typeNode.get() instanceof TypeDeclaration) typeDecl = (TypeDeclaration) typeNode.get();
-		int modifiers = typeDecl == null ? 0 : typeDecl.modifiers;
-		boolean notAClass = (modifiers &
-				(ClassFileConstants.AccInterface | ClassFileConstants.AccAnnotation | ClassFileConstants.AccEnum)) != 0;
-		
-		if (typeDecl == null || notAClass) {
+		if (!isClass(typeNode)) {
 			errorNode.addError("@EqualsAndHashCode is only supported on a class.");
 			return;
 		}
 		
+		TypeDeclaration typeDecl = (TypeDeclaration) typeNode.get();
 		boolean implicitCallSuper = callSuper == null;
 		
 		if (callSuper == null) {
 			try {
-				callSuper = ((Boolean)EqualsAndHashCode.class.getMethod("callSuper").getDefaultValue()).booleanValue();
+				callSuper = ((Boolean) EqualsAndHashCode.class.getMethod("callSuper").getDefaultValue()).booleanValue();
 			} catch (Exception ignore) {
 				throw new InternalError("Lombok bug - this cannot happen - can't find callSuper field in EqualsAndHashCode annotation.");
 			}
 		}
 		
-		boolean isDirectDescendantOfObject = true;
-		
-		if (typeDecl.superclass != null) {
-			String p = typeDecl.superclass.toString();
-			isDirectDescendantOfObject = p.equals("Object") || p.equals("java.lang.Object");
-		}
-		
-		if (isDirectDescendantOfObject && callSuper) {
-			errorNode.addError("Generating equals/hashCode with a supercall to java.lang.Object is pointless.");
-			return;
-		}
-		
-		if (implicitCallSuper && !isDirectDescendantOfObject) {
-			CallSuperType cst = typeNode.getAst().readConfiguration(ConfigurationKeys.EQUALS_AND_HASH_CODE_CALL_SUPER);
-			if (cst == null) cst = CallSuperType.WARN;
-			
-			switch (cst) {
-			default:
-			case WARN:
-				errorNode.addWarning("Generating equals/hashCode implementation but without a call to superclass, even though this class does not extend java.lang.Object. If this is intentional, add '@EqualsAndHashCode(callSuper=false)' to your type.");
-				callSuper = false;
-				break;
-			case SKIP:
-				callSuper = false;
-				break;
-			case CALL:
-				callSuper = true;
-				break;
-			}
-		}
-		
-		List<EclipseNode> nodesForEquality = new ArrayList<EclipseNode>();
-		if (includes != null) {
-			for (EclipseNode child : typeNode.down()) {
-				if (child.getKind() != Kind.FIELD) continue;
-				FieldDeclaration fieldDecl = (FieldDeclaration) child.get();
-				if (includes.contains(new String(fieldDecl.name))) nodesForEquality.add(child);
-			}
-		} else {
-			for (EclipseNode child : typeNode.down()) {
-				if (child.getKind() != Kind.FIELD) continue;
-				FieldDeclaration fieldDecl = (FieldDeclaration) child.get();
-				if (!filterField(fieldDecl)) continue;
-				
-				//Skip transient fields.
-				if ((fieldDecl.modifiers & ClassFileConstants.AccTransient) != 0) continue;
-				//Skip excluded fields.
-				if (excludes != null && excludes.contains(new String(fieldDecl.name))) continue;
-				nodesForEquality.add(child);
-			}
-		}
+		boolean isDirectDescendantOfObject = isDirectDescendantOfObject(typeNode);
 		
 		boolean isFinal = (typeDecl.modifiers & ClassFileConstants.AccFinal) != 0;
 		boolean needsCanEqual = !isFinal || !isDirectDescendantOfObject;
@@ -258,7 +191,31 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			//fallthrough
 		}
 		
-		MethodDeclaration equalsMethod = createEquals(typeNode, nodesForEquality, callSuper, errorNode.get(), fieldAccess, needsCanEqual, onParam);
+		if (isDirectDescendantOfObject && callSuper) {
+			errorNode.addError("Generating equals/hashCode with a supercall to java.lang.Object is pointless.");
+			return;
+		}
+		
+		if (implicitCallSuper && !isDirectDescendantOfObject) {
+			CallSuperType cst = typeNode.getAst().readConfiguration(ConfigurationKeys.EQUALS_AND_HASH_CODE_CALL_SUPER);
+			if (cst == null) cst = CallSuperType.WARN;
+			
+			switch (cst) {
+			default:
+			case WARN:
+				errorNode.addWarning("Generating equals/hashCode implementation but without a call to superclass, even though this class does not extend java.lang.Object. If this is intentional, add '@EqualsAndHashCode(callSuper=false)' to your type.");
+				callSuper = false;
+				break;
+			case SKIP:
+				callSuper = false;
+				break;
+			case CALL:
+				callSuper = true;
+				break;
+			}
+		}
+		
+		MethodDeclaration equalsMethod = createEquals(typeNode, members, callSuper, errorNode.get(), fieldAccess, needsCanEqual, onParam);
 		equalsMethod.traverse(new SetGeneratedByVisitor(errorNode.get()), ((TypeDeclaration)typeNode.get()).scope);
 		injectMethod(typeNode, equalsMethod);
 		
@@ -268,23 +225,53 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			injectMethod(typeNode, canEqualMethod);
 		}
 		
-		MethodDeclaration hashCodeMethod = createHashCode(typeNode, nodesForEquality, callSuper, errorNode.get(), fieldAccess);
+		if (cacheHashCode){
+			if (fieldExists(HASH_CODE_CACHE_NAME, typeNode) != MemberExistsResult.NOT_EXISTS) {
+				String msg = String.format("Not caching the result of hashCode: A field named %s already exists.", HASH_CODE_CACHE_NAME);
+				errorNode.addWarning(msg);
+				cacheHashCode = false;
+			} else {
+				createHashCodeCacheField(typeNode, errorNode.get());
+			}
+		}
+		
+		MethodDeclaration hashCodeMethod = createHashCode(typeNode, members, callSuper, cacheHashCode, errorNode.get(), fieldAccess);
 		hashCodeMethod.traverse(new SetGeneratedByVisitor(errorNode.get()), ((TypeDeclaration)typeNode.get()).scope);
 		injectMethod(typeNode, hashCodeMethod);
 	}
+
+	private void createHashCodeCacheField(EclipseNode typeNode, ASTNode source) {
+		FieldDeclaration hashCodeCacheDecl = new FieldDeclaration(HASH_CODE_CACHE_NAME_ARR, 0, 0);
+		hashCodeCacheDecl.modifiers = ClassFileConstants.AccPrivate | ClassFileConstants.AccTransient;
+		hashCodeCacheDecl.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
+		hashCodeCacheDecl.type = TypeReference.baseTypeReference(TypeIds.T_int, 0);
+		hashCodeCacheDecl.declarationSourceEnd = -1;
+		injectFieldAndMarkGenerated(typeNode, hashCodeCacheDecl);
+		setGeneratedBy(hashCodeCacheDecl, source);
+		setGeneratedBy(hashCodeCacheDecl.type, source);
+	}
 	
-	public MethodDeclaration createHashCode(EclipseNode type, Collection<EclipseNode> fields, boolean callSuper, ASTNode source, FieldAccess fieldAccess) {
+	private static final char[] HASH_CODE = "hashCode".toCharArray(), FLOAT_TO_INT_BITS = "floatToIntBits".toCharArray(), DOUBLE_TO_LONG_BITS = "doubleToLongBits".toCharArray();
+	
+	public MethodDeclaration createHashCode(EclipseNode type, Collection<Included<EclipseNode, EqualsAndHashCode.Include>> members, boolean callSuper, boolean cacheHashCode, ASTNode source, FieldAccess fieldAccess) {
 		int pS = source.sourceStart, pE = source.sourceEnd;
-		long p = (long)pS << 32 | pE;
+		long p = (long) pS << 32 | pE;
 		
-		MethodDeclaration method = new MethodDeclaration(
-				((CompilationUnitDeclaration) type.top().get()).compilationResult);
+		MethodDeclaration method = new MethodDeclaration(((CompilationUnitDeclaration) type.top().get()).compilationResult);
 		setGeneratedBy(method, source);
 		
 		method.modifiers = toEclipseModifier(AccessLevel.PUBLIC);
 		method.returnType = TypeReference.baseTypeReference(TypeIds.T_int, 0);
 		setGeneratedBy(method.returnType, source);
-		method.annotations = new Annotation[] {makeMarkerAnnotation(TypeConstants.JAVA_LANG_OVERRIDE, source)};
+		Annotation overrideAnnotation = makeMarkerAnnotation(TypeConstants.JAVA_LANG_OVERRIDE, source);
+		CheckerFrameworkVersion checkerFramework = getCheckerFrameworkVersion(type);
+		if (cacheHashCode && checkerFramework.generatePure()) {
+			method.annotations = new Annotation[] { overrideAnnotation, generateNamedAnnotation(source, CheckerFrameworkVersion.NAME__PURE) };
+		} else if (checkerFramework.generateSideEffectFree()) {
+			method.annotations = new Annotation[] { overrideAnnotation, generateNamedAnnotation(source, CheckerFrameworkVersion.NAME__SIDE_EFFECT_FREE) };
+		} else {
+			method.annotations = new Annotation[] { overrideAnnotation };
+		}
 		method.selector = "hashCode".toCharArray();
 		method.thrownExceptions = null;
 		method.typeParameters = null;
@@ -295,11 +282,34 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		
 		List<Statement> statements = new ArrayList<Statement>();
 		
-		final boolean isEmpty = fields.isEmpty();
+		boolean isEmpty = true;
+		for (Included<EclipseNode, EqualsAndHashCode.Include> member : members) {
+			TypeReference fType = getFieldType(member.getNode(), fieldAccess);
+			if (fType.getLastToken() != null) {
+				isEmpty = false;
+				break;
+			}
+		}
+		
+		/* if (this.$hashCodeCache != 0) return this.$hashCodeCache; */ {
+			if (cacheHashCode) {
+				FieldReference hashCodeCacheRef = new FieldReference(HASH_CODE_CACHE_NAME_ARR, p);
+				hashCodeCacheRef.receiver = new ThisReference(pS, pE);
+				setGeneratedBy(hashCodeCacheRef, source);
+				setGeneratedBy(hashCodeCacheRef.receiver, source);
+				EqualExpression cacheNotZero = new EqualExpression(hashCodeCacheRef, makeIntLiteral("0".toCharArray(), source), OperatorIds.NOT_EQUAL);
+				setGeneratedBy(cacheNotZero, source);
+				ReturnStatement returnCache = new ReturnStatement(hashCodeCacheRef, pS, pE);
+				setGeneratedBy(returnCache, source);
+				IfStatement ifStatement = new IfStatement(cacheNotZero, returnCache, pS, pE);
+				setGeneratedBy(ifStatement, source);
+				statements.add(ifStatement);
+			}
+		}
 		
 		/* final int PRIME = X; */ {
-			/* Without fields, PRIME isn't used, and that would trigger a 'local variable not used' warning. */
-			if (!isEmpty || callSuper) {
+			/* Without members, PRIME isn't used, as that would trigger a 'local variable not used' warning. */
+			if (!isEmpty) {
 				LocalDeclaration primeDecl = new LocalDeclaration(PRIME, pS, pE);
 				setGeneratedBy(primeDecl, source);
 				primeDecl.modifiers |= Modifier.FINAL;
@@ -311,31 +321,39 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			}
 		}
 		
-		/* int result = 1; */ {
-			LocalDeclaration resultDecl = new LocalDeclaration(RESULT, pS, pE);
+		/* int result = ... */ {
+		LocalDeclaration resultDecl = new LocalDeclaration(RESULT, pS, pE);
 			setGeneratedBy(resultDecl, source);
-			resultDecl.initialization = makeIntLiteral("1".toCharArray(), source);
+			final Expression init;
+			if (callSuper) {
+				/* ... super.hashCode(); */
+				MessageSend callToSuper = new MessageSend();
+				setGeneratedBy(callToSuper, source);
+				callToSuper.sourceStart = pS; callToSuper.sourceEnd = pE;
+				callToSuper.receiver = new SuperReference(pS, pE);
+				setGeneratedBy(callToSuper.receiver, source);
+				callToSuper.selector = "hashCode".toCharArray();
+				init = callToSuper;
+			} else {
+				/* ... 1; */
+				init = makeIntLiteral("1".toCharArray(), source);
+			}
+			resultDecl.initialization = init;
 			resultDecl.type = TypeReference.baseTypeReference(TypeIds.T_int, 0);
 			resultDecl.type.sourceStart = pS; resultDecl.type.sourceEnd = pE;
+			if (isEmpty && !cacheHashCode) resultDecl.modifiers |= Modifier.FINAL;
 			setGeneratedBy(resultDecl.type, source);
 			statements.add(resultDecl);
 		}
 		
-		if (callSuper) {
-			MessageSend callToSuper = new MessageSend();
-			setGeneratedBy(callToSuper, source);
-			callToSuper.sourceStart = pS; callToSuper.sourceEnd = pE;
-			callToSuper.receiver = new SuperReference(pS, pE);
-			setGeneratedBy(callToSuper.receiver, source);
-			callToSuper.selector = "hashCode".toCharArray();
-			statements.add(createResultCalculation(source, callToSuper));
-		}
-		
-		for (EclipseNode field : fields) {
-			TypeReference fType = getFieldType(field, fieldAccess);
-			char[] dollarFieldName = ("$" + field.getName()).toCharArray();
+		for (Included<EclipseNode, EqualsAndHashCode.Include> member : members) {
+			EclipseNode memberNode = member.getNode();
+			boolean isMethod = memberNode.getKind() == Kind.METHOD;
+			
+			TypeReference fType = getFieldType(memberNode, fieldAccess);
+			char[] dollarFieldName = ((isMethod ? "$$" : "$") + memberNode.getName()).toCharArray();
 			char[] token = fType.getLastToken();
-			Expression fieldAccessor = createFieldAccessor(field, fieldAccess, source);
+			Expression fieldAccessor = isMethod ? createMethodAccessor(memberNode, source) : createFieldAccessor(memberNode, fieldAccess, source);
 			if (fType.dimensions() == 0 && token != null) {
 				if (Arrays.equals(TypeConstants.BOOLEAN, token)) {
 					/* booleanField ? X : Y */
@@ -345,6 +363,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 					setGeneratedBy(intForBool, source);
 					statements.add(createResultCalculation(source, intForBool));
 				} else if (Arrays.equals(TypeConstants.LONG, token)) {
+					/* (int)(ref >>> 32 ^ ref) */
 					statements.add(createLocalDeclaration(source, dollarFieldName, TypeReference.baseTypeReference(TypeIds.T_long, 0), fieldAccessor));
 					SingleNameReference copy1 = new SingleNameReference(dollarFieldName, p);
 					setGeneratedBy(copy1, source);
@@ -357,7 +376,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 					floatToIntBits.sourceStart = pS; floatToIntBits.sourceEnd = pE;
 					setGeneratedBy(floatToIntBits, source);
 					floatToIntBits.receiver = generateQualifiedNameRef(source, TypeConstants.JAVA_LANG_FLOAT);
-					floatToIntBits.selector = "floatToIntBits".toCharArray();
+					floatToIntBits.selector = FLOAT_TO_INT_BITS;
 					floatToIntBits.arguments = new Expression[] { fieldAccessor };
 					statements.add(createResultCalculation(source, floatToIntBits));
 				} else if (Arrays.equals(TypeConstants.DOUBLE, token)) {
@@ -366,7 +385,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 					doubleToLongBits.sourceStart = pS; doubleToLongBits.sourceEnd = pE;
 					setGeneratedBy(doubleToLongBits, source);
 					doubleToLongBits.receiver = generateQualifiedNameRef(source, TypeConstants.JAVA_LANG_DOUBLE);
-					doubleToLongBits.selector = "doubleToLongBits".toCharArray();
+					doubleToLongBits.selector = DOUBLE_TO_LONG_BITS;
 					doubleToLongBits.arguments = new Expression[] { fieldAccessor };
 					statements.add(createLocalDeclaration(source, dollarFieldName, TypeReference.baseTypeReference(TypeIds.T_long, 0), doubleToLongBits));
 					SingleNameReference copy1 = new SingleNameReference(dollarFieldName, p);
@@ -390,7 +409,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 					hashCodeCall.sourceStart = pS; hashCodeCall.sourceEnd = pE;
 					setGeneratedBy(hashCodeCall, source);
 					hashCodeCall.receiver = copy1;
-					hashCodeCall.selector = "hashCode".toCharArray();
+					hashCodeCall.selector = HASH_CODE;
 					NullLiteral nullLiteral = new NullLiteral(pS, pE);
 					setGeneratedBy(nullLiteral, source);
 					EqualExpression objIsNull = new EqualExpression(copy2, nullLiteral, OperatorIds.EQUAL_EQUAL);
@@ -417,6 +436,49 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			}
 		}
 		
+		/* 
+		 * if (result == 0) result = Integer.MIN_VALUE;
+		 * this.$hashCodeCache = result;
+		 * 
+		 */ {
+			if (cacheHashCode) {
+				SingleNameReference resultRef = new SingleNameReference(RESULT, p);
+				setGeneratedBy(resultRef, source);
+				
+				EqualExpression resultIsZero = new EqualExpression(resultRef, makeIntLiteral("0".toCharArray(), source), OperatorIds.EQUAL_EQUAL);
+				setGeneratedBy(resultIsZero, source);
+				
+				resultRef = new SingleNameReference(RESULT, p);
+				setGeneratedBy(resultRef, source);
+				
+				FieldReference integerMinValue = new FieldReference("MIN_VALUE".toCharArray(), p);
+				integerMinValue.receiver = generateQualifiedNameRef(source, TypeConstants.JAVA_LANG_INTEGER);
+				setGeneratedBy(integerMinValue, source);
+				
+				Assignment newResult = new Assignment(resultRef, integerMinValue, pE);
+				newResult.sourceStart = pS; newResult.statementEnd = newResult.sourceEnd = pE;
+				setGeneratedBy(newResult, source);
+				
+				IfStatement ifStatement = new IfStatement(resultIsZero, newResult, pS, pE);
+				setGeneratedBy(ifStatement, source);
+				statements.add(ifStatement);
+				
+				
+				FieldReference hashCodeCacheRef = new FieldReference(HASH_CODE_CACHE_NAME_ARR, p);
+				hashCodeCacheRef.receiver = new ThisReference(pS, pE);
+				setGeneratedBy(hashCodeCacheRef, source);
+				setGeneratedBy(hashCodeCacheRef.receiver, source);
+				
+				resultRef = new SingleNameReference(RESULT, p);
+				setGeneratedBy(resultRef, source);
+				
+				Assignment cacheResult = new Assignment(hashCodeCacheRef, resultRef, pE);
+				cacheResult.sourceStart = pS; cacheResult.statementEnd = cacheResult.sourceEnd = pE;
+				setGeneratedBy(cacheResult, source);
+				statements.add(cacheResult);
+			}
+		}
+		
 		/* return result; */ {
 			SingleNameReference resultRef = new SingleNameReference(RESULT, p);
 			setGeneratedBy(resultRef, source);
@@ -424,7 +486,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			setGeneratedBy(returnStatement, source);
 			statements.add(returnStatement);
 		}
-		method.statements = statements.toArray(new Statement[statements.size()]);
+		method.statements = statements.toArray(new Statement[0]);
 		return method;
 	}
 
@@ -471,72 +533,126 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 	public TypeReference createTypeReference(EclipseNode type, long p, ASTNode source, boolean addWildcards) {
 		int pS = source.sourceStart; int pE = source.sourceEnd;
 		List<String> list = new ArrayList<String>();
+		List<Integer> genericsCount = addWildcards ? new ArrayList<Integer>() : null;
+		
 		list.add(type.getName());
+		if (addWildcards) genericsCount.add(arraySizeOf(((TypeDeclaration) type.get()).typeParameters));
+		boolean staticContext = (((TypeDeclaration) type.get()).modifiers & ClassFileConstants.AccStatic) != 0;
 		EclipseNode tNode = type.up();
+		
 		while (tNode != null && tNode.getKind() == Kind.TYPE) {
+			TypeDeclaration td = (TypeDeclaration) tNode.get();
+			if (td.name == null || td.name.length == 0) break;
 			list.add(tNode.getName());
+			if (!staticContext && tNode.getKind() == Kind.TYPE && (td.modifiers & ClassFileConstants.AccInterface) != 0) staticContext = true;
+			if (addWildcards) genericsCount.add(staticContext ? 0 : arraySizeOf(td.typeParameters));
+			if (!staticContext) staticContext = (td.modifiers & Modifier.STATIC) != 0;
 			tNode = tNode.up();
 		}
 		Collections.reverse(list);
-		
-		TypeDeclaration typeDecl = (TypeDeclaration) type.get();
-		int typeParamCount = typeDecl.typeParameters == null ? 0 : typeDecl.typeParameters.length;
-		if (typeParamCount == 0) addWildcards = false;
-		TypeReference[] typeArgs = null;
-		if (addWildcards) {
-			typeArgs = new TypeReference[typeParamCount];
-			for (int i = 0; i < typeParamCount; i++) {
-				typeArgs[i] = new Wildcard(Wildcard.UNBOUND);
-				typeArgs[i].sourceStart = pS; typeArgs[i].sourceEnd = pE;
-				setGeneratedBy(typeArgs[i], source);
-			}
-		}
+		if (addWildcards) Collections.reverse(genericsCount);
 		
 		if (list.size() == 1) {
-			if (addWildcards) {
-				return new ParameterizedSingleTypeReference(list.get(0).toCharArray(), typeArgs, 0, p);
-			} else {
+			if (!addWildcards || genericsCount.get(0) == 0) {
 				return new SingleTypeReference(list.get(0).toCharArray(), p);
+			} else {
+				return new ParameterizedSingleTypeReference(list.get(0).toCharArray(), wildcardify(pS, pE, source, genericsCount.get(0)), 0, p);
 			}
 		}
+		
+		if (addWildcards) {
+			addWildcards = false;
+			for (int i : genericsCount) if (i > 0) addWildcards = true;
+		}
+		
 		long[] ps = new long[list.size()];
 		char[][] tokens = new char[list.size()][];
 		for (int i = 0; i < list.size(); i++) {
 			ps[i] = p;
 			tokens[i] = list.get(i).toCharArray();
 		}
-		if (addWildcards) {
-			TypeReference[][] typeArgs2 = new TypeReference[tokens.length][];
-			typeArgs2[typeArgs2.length - 1] = typeArgs;
-			return new ParameterizedQualifiedTypeReference(tokens, typeArgs2, 0, ps);
-		} else {
-			return new QualifiedTypeReference(tokens, ps);
-		}
+		
+		if (!addWildcards) return new QualifiedTypeReference(tokens, ps);
+		TypeReference[][] typeArgs2 = new TypeReference[tokens.length][];
+		for (int i = 0; i < tokens.length; i++) typeArgs2[i] = wildcardify(pS, pE, source, genericsCount.get(i));
+		return new ParameterizedQualifiedTypeReference(tokens, typeArgs2, 0, ps);
 	}
 	
-	public MethodDeclaration createEquals(EclipseNode type, Collection<EclipseNode> fields, boolean callSuper, ASTNode source, FieldAccess fieldAccess, boolean needsCanEqual, List<Annotation> onParam) {
-		int pS = source.sourceStart; int pE = source.sourceEnd;
-		long p = (long)pS << 32 | pE;
+	private TypeReference[] wildcardify(int pS, int pE, ASTNode source, int count) {
+		if (count == 0) return null;
+		TypeReference[] typeArgs = new TypeReference[count];
+		for (int i = 0; i < count; i++) {
+			typeArgs[i] = new Wildcard(Wildcard.UNBOUND);
+			typeArgs[i].sourceStart = pS; typeArgs[i].sourceEnd = pE;
+			setGeneratedBy(typeArgs[i], source);
+		}
 		
-		MethodDeclaration method = new MethodDeclaration(
-				((CompilationUnitDeclaration) type.top().get()).compilationResult);
+		return typeArgs;
+	}
+	
+	private int arraySizeOf(Object[] arr) {
+		return arr == null ? 0 : arr.length;
+	}
+	
+	/*
+	 * scan method, then class, then enclosing classes, then package for the first of:
+	 * javax.annotation.ParametersAreNonnullByDefault or javax.annotation.ParametersAreNullableByDefault. If it's the NN variant, generate javax.annotation.Nullable _on the type_.
+	 * org.eclipse.jdt.annotation.NonNullByDefault ->  org.eclipse.jdt.annotation.Nullable
+	 */
+	
+	private static final char[][] JAVAX_ANNOTATION_NULLABLE = Eclipse.fromQualifiedName("javax.annotation.Nullable");
+	private static final char[][] ORG_ECLIPSE_JDT_ANNOTATION_NULLABLE = Eclipse.fromQualifiedName("org.eclipse.jdt.annotation.Nullable");
+	
+	public MethodDeclaration createEquals(EclipseNode type, Collection<Included<EclipseNode, EqualsAndHashCode.Include>> members, boolean callSuper, ASTNode source, FieldAccess fieldAccess, boolean needsCanEqual, List<Annotation> onParam) {
+		int pS = source.sourceStart; int pE = source.sourceEnd;
+		long p = (long) pS << 32 | pE;
+		
+		List<NullAnnotationLibrary> applied = new ArrayList<NullAnnotationLibrary>();
+		
+		Annotation[] onParamNullable = null;
+		String nearest = scanForNearestAnnotation(type, "javax.annotation.ParametersAreNullableByDefault", "javax.annotation.ParametersAreNonnullByDefault");
+		if ("javax.annotation.ParametersAreNonnullByDefault".equals(nearest)) {
+			onParamNullable = new Annotation[] { new MarkerAnnotation(generateQualifiedTypeRef(source, JAVAX_ANNOTATION_NULLABLE), 0) };
+			applied.add(NullAnnotationLibrary.JAVAX);
+		}
+		
+		Annotation[] onParamTypeNullable = null;
+		nearest = scanForNearestAnnotation(type, "org.eclipse.jdt.annotation.NonNullByDefault");
+		if (nearest != null) {
+			onParamTypeNullable = new Annotation[] { new MarkerAnnotation(generateQualifiedTypeRef(source, ORG_ECLIPSE_JDT_ANNOTATION_NULLABLE), 0) };
+			applied.add(NullAnnotationLibrary.ECLIPSE);
+		}
+		
+		MethodDeclaration method = new MethodDeclaration(((CompilationUnitDeclaration) type.top().get()).compilationResult);
 		setGeneratedBy(method, source);
 		method.modifiers = toEclipseModifier(AccessLevel.PUBLIC);
 		method.returnType = TypeReference.baseTypeReference(TypeIds.T_boolean, 0);
 		method.returnType.sourceStart = pS; method.returnType.sourceEnd = pE;
 		setGeneratedBy(method.returnType, source);
-		method.annotations = new Annotation[] {makeMarkerAnnotation(TypeConstants.JAVA_LANG_OVERRIDE, source)};
+		Annotation overrideAnnotation = makeMarkerAnnotation(TypeConstants.JAVA_LANG_OVERRIDE, source);
+		if (getCheckerFrameworkVersion(type).generateSideEffectFree()) {
+			method.annotations = new Annotation[] { overrideAnnotation, generateNamedAnnotation(source, CheckerFrameworkVersion.NAME__SIDE_EFFECT_FREE) };
+		} else {
+			method.annotations = new Annotation[] { overrideAnnotation };
+		}
 		method.selector = "equals".toCharArray();
 		method.thrownExceptions = null;
 		method.typeParameters = null;
 		method.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
 		method.bodyStart = method.declarationSourceStart = method.sourceStart = source.sourceStart;
 		method.bodyEnd = method.declarationSourceEnd = method.sourceEnd = source.sourceEnd;
-		TypeReference objectRef = new QualifiedTypeReference(TypeConstants.JAVA_LANG_OBJECT, new long[] { p, p, p });
+		QualifiedTypeReference objectRef = new QualifiedTypeReference(TypeConstants.JAVA_LANG_OBJECT, new long[] { p, p, p });
+		if (onParamTypeNullable != null) {
+			objectRef.annotations = new Annotation[][] {null, null, onParamTypeNullable};
+			objectRef.bits |= Eclipse.HasTypeAnnotations;
+			method.bits |= Eclipse.HasTypeAnnotations;
+		}
 		setGeneratedBy(objectRef, source);
 		method.arguments = new Argument[] {new Argument(new char[] { 'o' }, 0, objectRef, Modifier.FINAL)};
 		method.arguments[0].sourceStart = pS; method.arguments[0].sourceEnd = pE;
-		if (!onParam.isEmpty()) method.arguments[0].annotations = onParam.toArray(new Annotation[0]);
+		if (!onParam.isEmpty() || onParamNullable != null)
+			method.arguments[0].annotations = copyAnnotations(source, onParam.toArray(new Annotation[0]), onParamNullable);
+		EclipseHandlerUtil.createRelevantNullableAnnotation(type, method.arguments[0], method, applied);
 		setGeneratedBy(method.arguments[0], source);
 		
 		List<Statement> statements = new ArrayList<Statement>();
@@ -586,7 +702,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		char[] otherName = "other".toCharArray();
 		
 		/* Outer.Inner.MyType<?> other = (Outer.Inner.MyType<?>) o; */ {
-			if (!fields.isEmpty() || needsCanEqual) {
+			if (!members.isEmpty() || needsCanEqual) {
 				LocalDeclaration other = new LocalDeclaration(otherName, pS, pE);
 				other.modifiers |= ClassFileConstants.AccFinal;
 				setGeneratedBy(other, source);
@@ -655,11 +771,14 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			statements.add(ifSuperEquals);
 		}
 		
-		for (EclipseNode field : fields) {
-			TypeReference fType = getFieldType(field, fieldAccess);
+		for (Included<EclipseNode, EqualsAndHashCode.Include> member : members) {
+			EclipseNode memberNode = member.getNode();
+			boolean isMethod = memberNode.getKind() == Kind.METHOD;
+			
+			TypeReference fType = getFieldType(memberNode, fieldAccess);
 			char[] token = fType.getLastToken();
-			Expression thisFieldAccessor = createFieldAccessor(field, fieldAccess, source);
-			Expression otherFieldAccessor = createFieldAccessor(field, fieldAccess, source, otherName);
+			Expression thisFieldAccessor = isMethod ? createMethodAccessor(memberNode, source) : createFieldAccessor(memberNode, fieldAccess, source);
+			Expression otherFieldAccessor = isMethod ? createMethodAccessor(memberNode, source, otherName) : createFieldAccessor(memberNode, fieldAccess, source, otherName);
 			
 			if (fType.dimensions() == 0 && token != null) {
 				if (Arrays.equals(TypeConstants.FLOAT, token)) {
@@ -679,9 +798,9 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 				} else /* objects */ {
 					/* final java.lang.Object this$fieldName = this.fieldName; */
 					/* final java.lang.Object other$fieldName = other.fieldName; */
-					/* if (this$fieldName == null ? other$fieldName != null : !this$fieldName.equals(other$fieldName)) return false;; */
-					char[] thisDollarFieldName = ("this$" + field.getName()).toCharArray();
-					char[] otherDollarFieldName = ("other$" + field.getName()).toCharArray();
+					/* if (this$fieldName == null ? other$fieldName != null : !this$fieldName.equals(other$fieldName)) return false; */
+					char[] thisDollarFieldName = ("this" + (isMethod ? "$$" : "$") + memberNode.getName()).toCharArray();
+					char[] otherDollarFieldName = ("other" + (isMethod ? "$$" : "$") + memberNode.getName()).toCharArray();
 					
 					statements.add(createLocalDeclaration(source, thisDollarFieldName, generateQualifiedTypeRef(source, TypeConstants.JAVA_LANG_OBJECT), thisFieldAccessor));
 					statements.add(createLocalDeclaration(source, otherDollarFieldName, generateQualifiedTypeRef(source, TypeConstants.JAVA_LANG_OBJECT), otherFieldAccessor));
@@ -694,7 +813,6 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 					setGeneratedBy(other1, source);
 					SingleNameReference other2 = new SingleNameReference(otherDollarFieldName, p);
 					setGeneratedBy(other2, source);
-
 					
 					NullLiteral nullLiteral = new NullLiteral(pS, pE);
 					setGeneratedBy(nullLiteral, source);
@@ -753,10 +871,9 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 			setGeneratedBy(returnStatement, source);
 			statements.add(returnStatement);
 		}
-		method.statements = statements.toArray(new Statement[statements.size()]);
+		method.statements = statements.toArray(new Statement[0]);
 		return method;
 	}
-	
 	
 	public MethodDeclaration createCanEqual(EclipseNode type, ASTNode source, List<Annotation> onParam) {
 		/* protected boolean canEqual(final java.lang.Object other) {
@@ -768,8 +885,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		
 		char[] otherName = "other".toCharArray();
 		
-		MethodDeclaration method = new MethodDeclaration(
-				((CompilationUnitDeclaration) type.top().get()).compilationResult);
+		MethodDeclaration method = new MethodDeclaration(((CompilationUnitDeclaration) type.top().get()).compilationResult);
 		setGeneratedBy(method, source);
 		method.modifiers = toEclipseModifier(AccessLevel.PROTECTED);
 		method.returnType = TypeReference.baseTypeReference(TypeIds.T_boolean, 0);
@@ -786,6 +902,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		method.arguments = new Argument[] {new Argument(otherName, 0, objectRef, Modifier.FINAL)};
 		method.arguments[0].sourceStart = pS; method.arguments[0].sourceEnd = pE;
 		if (!onParam.isEmpty()) method.arguments[0].annotations = onParam.toArray(new Annotation[0]);
+		EclipseHandlerUtil.createRelevantNullableAnnotation(type, method.arguments[0], method);
 		setGeneratedBy(method.arguments[0], source);
 		
 		SingleNameReference otherRef = new SingleNameReference(otherName, p);
@@ -802,6 +919,7 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		setGeneratedBy(returnStatement, source);
 		
 		method.statements = new Statement[] {returnStatement};
+		if (getCheckerFrameworkVersion(type).generatePure()) method.annotations = new Annotation[] { generateNamedAnnotation(source, CheckerFrameworkVersion.NAME__PURE) };
 		return method;
 	}
 
@@ -843,30 +961,5 @@ public class HandleEqualsAndHashCode extends EclipseAnnotationHandler<EqualsAndH
 		CastExpression expr = makeCastExpression(xorParts, intRef, source);
 		expr.sourceStart = pS; expr.sourceEnd = pE;
 		return expr;
-	}
-	
-	public NameReference generateQualifiedNameRef(ASTNode source, char[]... varNames) {
-		int pS = source.sourceStart, pE = source.sourceEnd;
-		long p = (long)pS << 32 | pE;
-		
-		NameReference ref;
-		
-		if (varNames.length > 1) ref = new QualifiedNameReference(varNames, new long[varNames.length], pS, pE);
-		else ref = new SingleNameReference(varNames[0], p);
-		setGeneratedBy(ref, source);
-		return ref;
-	}
-	
-	public TypeReference generateQualifiedTypeRef(ASTNode source, char[]... varNames) {
-		int pS = source.sourceStart, pE = source.sourceEnd;
-		long p = (long)pS << 32 | pE;
-		
-		TypeReference ref;
-		
-		long[] poss = Eclipse.poss(source, varNames.length);
-		if (varNames.length > 1) ref = new QualifiedTypeReference(varNames, poss);
-		else ref = new SingleTypeReference(varNames[0], p);
-		setGeneratedBy(ref, source);
-		return ref;
 	}
 }

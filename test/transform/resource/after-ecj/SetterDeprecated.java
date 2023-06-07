@@ -5,10 +5,13 @@ class SetterDeprecated {
   SetterDeprecated() {
     super();
   }
-  public @java.lang.Deprecated @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") void setAnnotation(final int annotation) {
+  public @java.lang.Deprecated @java.lang.SuppressWarnings("all") void setAnnotation(final int annotation) {
     this.annotation = annotation;
   }
-  public @java.lang.Deprecated @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") void setJavadoc(final int javadoc) {
+  /**
+   * @deprecated
+   */
+  public @java.lang.Deprecated @java.lang.SuppressWarnings("all") void setJavadoc(final int javadoc) {
     this.javadoc = javadoc;
   }
 }

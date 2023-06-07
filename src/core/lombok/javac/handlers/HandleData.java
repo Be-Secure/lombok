@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2014 The Project Lombok Authors.
+ * Copyright (C) 2009-2021 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,24 +30,29 @@ import lombok.core.AnnotationValues;
 import lombok.javac.JavacAnnotationHandler;
 import lombok.javac.JavacNode;
 import lombok.javac.handlers.HandleConstructor.SkipIfConstructorExists;
-
-import org.mangosdk.spi.ProviderFor;
+import lombok.spi.Provides;
 
 import com.sun.tools.javac.tree.JCTree.JCAnnotation;
+import com.sun.tools.javac.util.List;
 
 /**
  * Handles the {@code lombok.Data} annotation for javac.
  */
-@ProviderFor(JavacAnnotationHandler.class)
+@Provides
 public class HandleData extends JavacAnnotationHandler<Data> {
+	private HandleConstructor handleConstructor = new HandleConstructor();
+	private HandleGetter handleGetter = new HandleGetter();
+	private HandleSetter handleSetter = new HandleSetter();
+	private HandleEqualsAndHashCode handleEqualsAndHashCode = new HandleEqualsAndHashCode();
+	private HandleToString handleToString = new HandleToString();
+	
 	@Override public void handle(AnnotationValues<Data> annotation, JCAnnotation ast, JavacNode annotationNode) {
 		handleFlagUsage(annotationNode, ConfigurationKeys.DATA_FLAG_USAGE, "@Data");
 		
 		deleteAnnotationIfNeccessary(annotationNode, Data.class);
 		JavacNode typeNode = annotationNode.up();
-		boolean notAClass = !isClass(typeNode);
 		
-		if (notAClass) {
+		if (!isClass(typeNode)) {
 			annotationNode.addError("@Data is only supported on a class.");
 			return;
 		}
@@ -55,10 +60,11 @@ public class HandleData extends JavacAnnotationHandler<Data> {
 		String staticConstructorName = annotation.getInstance().staticConstructor();
 		
 		// TODO move this to the end OR move it to the top in eclipse.
-		new HandleConstructor().generateRequiredArgsConstructor(typeNode, AccessLevel.PUBLIC, staticConstructorName, SkipIfConstructorExists.YES, annotationNode);
-		new HandleGetter().generateGetterForType(typeNode, annotationNode, AccessLevel.PUBLIC, true);
-		new HandleSetter().generateSetterForType(typeNode, annotationNode, AccessLevel.PUBLIC, true);
-		new HandleEqualsAndHashCode().generateEqualsAndHashCodeForType(typeNode, annotationNode);
-		new HandleToString().generateToStringForType(typeNode, annotationNode);
+		handleConstructor.generateRequiredArgsConstructor(typeNode, AccessLevel.PUBLIC, staticConstructorName, SkipIfConstructorExists.YES, annotationNode);
+		handleConstructor.generateExtraNoArgsConstructor(typeNode, annotationNode);
+		handleGetter.generateGetterForType(typeNode, annotationNode, AccessLevel.PUBLIC, true, List.<JCAnnotation>nil());
+		handleSetter.generateSetterForType(typeNode, annotationNode, AccessLevel.PUBLIC, true, List.<JCAnnotation>nil(), List.<JCAnnotation>nil());
+		handleEqualsAndHashCode.generateEqualsAndHashCodeForType(typeNode, annotationNode);
+		handleToString.generateToStringForType(typeNode, annotationNode);
 	}
 }

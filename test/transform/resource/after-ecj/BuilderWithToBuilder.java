@@ -1,44 +1,57 @@
 import java.util.List;
 import lombok.Builder;
 @Builder(toBuilder = true) @lombok.experimental.Accessors(prefix = "m") class BuilderWithToBuilder<T> {
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") class BuilderWithToBuilderBuilder<T> {
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") String one;
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") String two;
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") T foo;
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") java.util.ArrayList<T> bars;
-    @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder() {
+  public static @java.lang.SuppressWarnings("all") class BuilderWithToBuilderBuilder<T> {
+    private @java.lang.SuppressWarnings("all") String one;
+    private @java.lang.SuppressWarnings("all") String two;
+    private @java.lang.SuppressWarnings("all") T foo;
+    private @java.lang.SuppressWarnings("all") java.util.ArrayList<T> bars;
+    @java.lang.SuppressWarnings("all") BuilderWithToBuilderBuilder() {
       super();
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> one(final String one) {
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> one(final String one) {
       this.one = one;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> two(final String two) {
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> two(final String two) {
       this.two = two;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> foo(final T foo) {
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> foo(final T foo) {
       this.foo = foo;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> bar(T bar) {
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> bar(final T bar) {
       if ((this.bars == null))
           this.bars = new java.util.ArrayList<T>();
       this.bars.add(bar);
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> bars(java.util.Collection<? extends T> bars) {
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> bars(final java.util.Collection<? extends T> bars) {
+      if ((bars == null))
+          {
+            throw new java.lang.NullPointerException("bars cannot be null");
+          }
       if ((this.bars == null))
           this.bars = new java.util.ArrayList<T>();
       this.bars.addAll(bars);
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> clearBars() {
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> clearBars() {
       if ((this.bars != null))
           this.bars.clear();
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilder<T> build() {
+    public @java.lang.SuppressWarnings("all") BuilderWithToBuilder<T> build() {
       java.util.List<T> bars;
       switch (((this.bars == null) ? 0 : this.bars.size())) {
       case 0 :
@@ -50,9 +63,9 @@ import lombok.Builder;
       default :
           bars = java.util.Collections.unmodifiableList(new java.util.ArrayList<T>(this.bars));
       }
-      return new BuilderWithToBuilder<T>(one, two, foo, bars);
+      return new BuilderWithToBuilder<T>(this.one, this.two, this.foo, bars);
     }
-    public @java.lang.Override @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") java.lang.String toString() {
+    public @java.lang.Override @java.lang.SuppressWarnings("all") java.lang.String toString() {
       return (((((((("BuilderWithToBuilder.BuilderWithToBuilderBuilder(one=" + this.one) + ", two=") + this.two) + ", foo=") + this.foo) + ", bars=") + this.bars) + ")");
     }
   }
@@ -63,93 +76,106 @@ import lombok.Builder;
   public static <K>K rrr(BuilderWithToBuilder<K> x) {
     return x.foo;
   }
-  @java.beans.ConstructorProperties({"one", "two", "foo", "bars"}) @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilder(final String one, final String two, final T foo, final List<T> bars) {
+  @java.lang.SuppressWarnings("all") BuilderWithToBuilder(final String one, final String two, final T foo, final List<T> bars) {
     super();
     this.mOne = one;
     this.mTwo = two;
     this.foo = foo;
     this.bars = bars;
   }
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") <T>BuilderWithToBuilderBuilder<T> builder() {
-    return new BuilderWithToBuilderBuilder<T>();
+  public static @java.lang.SuppressWarnings("all") <T>BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> builder() {
+    return new BuilderWithToBuilder.BuilderWithToBuilderBuilder<T>();
   }
-  public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") BuilderWithToBuilderBuilder<T> toBuilder() {
-    return new BuilderWithToBuilderBuilder<T>().one(this.mOne).two(this.mTwo).foo(BuilderWithToBuilder.rrr(this)).bars(this.bars);
+  public @java.lang.SuppressWarnings("all") BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> toBuilder() {
+    final T foo = BuilderWithToBuilder.<T>rrr(this);
+    final BuilderWithToBuilder.BuilderWithToBuilderBuilder<T> builder = new BuilderWithToBuilder.BuilderWithToBuilderBuilder<T>().one(this.mOne).two(this.mTwo).foo(foo);
+    if ((this.bars != null))
+        builder.bars(this.bars);
+    return builder;
   }
 }
 @lombok.experimental.Accessors(prefix = "m") class ConstructorWithToBuilder<T> {
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") class ConstructorWithToBuilderBuilder<T> {
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") String mOne;
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") T bar;
-    @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") ConstructorWithToBuilderBuilder() {
+  public static @java.lang.SuppressWarnings("all") class ConstructorWithToBuilderBuilder<T> {
+    private @java.lang.SuppressWarnings("all") String mOne;
+    private @java.lang.SuppressWarnings("all") T baz;
+    private @java.lang.SuppressWarnings("all") com.google.common.collect.ImmutableList<T> bars;
+    @java.lang.SuppressWarnings("all") ConstructorWithToBuilderBuilder() {
       super();
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") ConstructorWithToBuilderBuilder<T> mOne(final String mOne) {
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T> mOne(final String mOne) {
       this.mOne = mOne;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") ConstructorWithToBuilderBuilder<T> bar(final T bar) {
-      this.bar = bar;
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T> baz(final T baz) {
+      this.baz = baz;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") ConstructorWithToBuilder<T> build() {
-      return new ConstructorWithToBuilder<T>(mOne, bar);
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T> bars(final com.google.common.collect.ImmutableList<T> bars) {
+      this.bars = bars;
+      return this;
     }
-    public @java.lang.Override @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") java.lang.String toString() {
-      return (((("ConstructorWithToBuilder.ConstructorWithToBuilderBuilder(mOne=" + this.mOne) + ", bar=") + this.bar) + ")");
+    public @java.lang.SuppressWarnings("all") ConstructorWithToBuilder<T> build() {
+      return new ConstructorWithToBuilder<T>(this.mOne, this.baz, this.bars);
+    }
+    public @java.lang.Override @java.lang.SuppressWarnings("all") java.lang.String toString() {
+      return (((((("ConstructorWithToBuilder.ConstructorWithToBuilderBuilder(mOne=" + this.mOne) + ", baz=") + this.baz) + ", bars=") + this.bars) + ")");
     }
   }
   private String mOne;
   private String mTwo;
   private T foo;
-  private @lombok.Singular List<T> bars;
-  public @Builder(toBuilder = true) ConstructorWithToBuilder(String mOne, @Builder.ObtainVia(field = "foo") T bar) {
+  private @lombok.Singular com.google.common.collect.ImmutableList<T> bars;
+  public @Builder(toBuilder = true) ConstructorWithToBuilder(String mOne, @Builder.ObtainVia(field = "foo") T baz, com.google.common.collect.ImmutableList<T> bars) {
     super();
   }
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") <T>ConstructorWithToBuilderBuilder<T> builder() {
-    return new ConstructorWithToBuilderBuilder<T>();
+  public static @java.lang.SuppressWarnings("all") <T>ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T> builder() {
+    return new ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T>();
   }
-  public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") ConstructorWithToBuilderBuilder<T> toBuilder() {
-    return new ConstructorWithToBuilderBuilder<T>().mOne(this.mOne).bar(this.foo);
+  public @java.lang.SuppressWarnings("all") ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T> toBuilder() {
+    return new ConstructorWithToBuilder.ConstructorWithToBuilderBuilder<T>().mOne(this.mOne).baz(this.foo).bars(this.bars);
   }
 }
-@lombok.experimental.Accessors(prefix = "m") class StaticWithToBuilder<T, K> {
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") class StaticWithToBuilderBuilder<Z> {
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") String mOne;
-    private @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") Z bar;
-    @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") StaticWithToBuilderBuilder() {
+class StaticMethodWithToBuilder<T> {
+  public static @java.lang.SuppressWarnings("all") class StaticMethodWithToBuilderBuilder<T> {
+    private @java.lang.SuppressWarnings("all") T foo;
+    @java.lang.SuppressWarnings("all") StaticMethodWithToBuilderBuilder() {
       super();
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") StaticWithToBuilderBuilder<Z> mOne(final String mOne) {
-      this.mOne = mOne;
+    /**
+     * @return {@code this}.
+     */
+    public @java.lang.SuppressWarnings("all") StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder<T> foo(final T foo) {
+      this.foo = foo;
       return this;
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") StaticWithToBuilderBuilder<Z> bar(final Z bar) {
-      this.bar = bar;
-      return this;
+    public @java.lang.SuppressWarnings("all") StaticMethodWithToBuilder<T> build() {
+      return StaticMethodWithToBuilder.<T>of(this.foo);
     }
-    public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") StaticWithToBuilder<Z, String> build() {
-      return StaticWithToBuilder.<Z>test(mOne, bar);
-    }
-    public @java.lang.Override @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") java.lang.String toString() {
-      return (((("StaticWithToBuilder.StaticWithToBuilderBuilder(mOne=" + this.mOne) + ", bar=") + this.bar) + ")");
+    public @java.lang.Override @java.lang.SuppressWarnings("all") java.lang.String toString() {
+      return (("StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder(foo=" + this.foo) + ")");
     }
   }
-  private String mOne;
-  private String mTwo;
   private T foo;
-  private K bar;
-  private @lombok.Singular List<T> bars;
-  StaticWithToBuilder() {
+  public StaticMethodWithToBuilder(T foo) {
     super();
+    this.foo = foo;
   }
-  public static @Builder(toBuilder = true) <Z>StaticWithToBuilder<Z, String> test(String mOne, @Builder.ObtainVia(field = "foo") Z bar) {
-    return new StaticWithToBuilder<Z, String>();
+  public static @Builder(toBuilder = true) <T>StaticMethodWithToBuilder<T> of(T foo) {
+    return new StaticMethodWithToBuilder<T>(foo);
   }
-  public static @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") <Z>StaticWithToBuilderBuilder<Z> builder() {
-    return new StaticWithToBuilderBuilder<Z>();
+  public static @java.lang.SuppressWarnings("all") <T>StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder<T> builder() {
+    return new StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder<T>();
   }
-  public @java.lang.SuppressWarnings("all") @javax.annotation.Generated("lombok") StaticWithToBuilderBuilder<T> toBuilder() {
-    return new StaticWithToBuilderBuilder<T>().mOne(this.mOne).bar(this.foo);
+  public @java.lang.SuppressWarnings("all") StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder<T> toBuilder() {
+    return new StaticMethodWithToBuilder.StaticMethodWithToBuilderBuilder<T>().foo(this.foo);
   }
 }

@@ -1,11 +1,37 @@
 <#macro feature title href>
 	<div class="bs-callout bs-callout-danger">
-		<h4><a href="${href}"><code>${title}</code></a></h4>
+		<h2><a href="${href}"><code>${title}</code></a></h2>
 		<p><#nested></p>
 	</div>
 </#macro>
 
-<#macro scaffold load=[]>
+<#assign setupTargets = {
+	"Compilers": {
+		"Javac": "javac",
+		"ECJ": "ecj"
+	},
+	"Build tools": {
+		"maven": "maven",
+		"gradle": "gradle",
+		"ant": "ant",
+		"kobalt": "kobalt"
+	},
+	"IDEs": {
+		"Eclipse": "eclipse",
+		"IntelliJ IDEA": "intellij",
+		"Netbeans": "netbeans",
+		"MyEclipse": "eclipse",
+		"Spring Tool Suite": "eclipse",
+		"JBoss Developer Studio": "eclipse",
+		"Visual Studio Code": "vscode"
+	},
+	"Platforms": {
+		"Android": "android",
+		"GWT": "gwt"
+	}
+}>
+
+<#macro scaffold load=[] title='Project Lombok'>
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -15,13 +41,12 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<link href="/favicon.ico" rel="icon" type="image/x-icon" />
 
-		<title>Project Lombok</title>
+		<title>${title}</title>
 
-		<script src="//cdnjs.cloudflare.com/ajax/libs/modernizr/2.8.3/modernizr.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/modernizr/2.8.3/modernizr.min.js" integrity="sha512-3n19xznO0ubPpSwYCRRBgHh63DrV+bdZfHK52b1esvId4GsfwStQNPJFjeQos2h3JwCmZl0/LgLxSKMAI55hgw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-		<link href="/css/bootstrap.css" rel="stylesheet" />
-		<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet" />
-
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/simplex/bootstrap.min.css" integrity="sha512-0FG7nV64qlyGMQHtk7WOzPY1NZ6SKmjNee+PMX/7xbJu8Qx6LlHhCjSj9hRDJQ6QnlFsUrcKHKxli/9z4uhHrA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha512-SfTiTlX6kk+qitfevl/7LibUOeJWlt9rbyDn92a1DqWOw9vWG2MFoays0sgObmWazO5BQPiFucnnEAjpAB+/Sw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 		<link href="/css/custom.css" rel="stylesheet" />
 
 		<#list load as ld>
@@ -29,11 +54,8 @@
 				<link href="${ld?url_path}" rel="stylesheet" />
 			</#if>
 		</#list>
-		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
-		<script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.2.0/js/bootstrap.min.js"></script>
-
-		<script src="/js/swfobject.js"></script>
-		<script src="/js/history.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" integrity="sha512-894YE6QWD5I59HgZOGReFYm4dnWc1Qt5NtvYSaNcOP+u1T9qYdvdihz0PPSiiqn/+/3e7Jo4EaG7TubfWGUrMQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.1/js/bootstrap.min.js" integrity="sha512-UR25UO94eTnCVwjbXozyeVd6ZqpaAE9naiEUBK/A+QDbfSTQFhPGj5lOR6d8tsgbBk84Ggb5A3EkjsOgPRPcKA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 		<script src="/js/main.js"></script>
 		<#list load as ld>
 			<#if ld?ends_with(".js")>
@@ -52,8 +74,8 @@ ga('send', 'pageview');
 		<div class="navbar navbar-default navbar-fixed-top">
 			<div class="container">
 				<div class="navbar-header">
-					<a href="/" class="navbar-brand">Lombok Project</a>
-					<button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#navbar-main">
+					<a href="/" class="navbar-brand" role="button">Project Lombok</a>
+					<button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#navbar-main" aria-label="Open Menu">
 						<span class="icon-bar"></span>
 						<span class="icon-bar"></span>
 						<span class="icon-bar"></span>
@@ -62,48 +84,40 @@ ga('send', 'pageview');
 				<div class="navbar-collapse collapse" id="navbar-main">
 					<ul class="nav navbar-nav">
 						<li class="dropdown">
-							<a class="dropdown-toggle pointer" data-toggle="dropdown">Features<span class="caret"></span></a>
+							<a class="dropdown-toggle pointer" data-toggle="dropdown" href="#" role="button">Features<span class="caret"></span></a>
 							<ul class="dropdown-menu" aria-labelledby="themes">
 								<li><a href="/features/all">Stable</a></li>
 								<li><a href="/features/experimental/all">Experimental</a></li>
 							</ul>
 						</li>
-						<li>
-							<a href="https://groups.google.com/group/project-lombok" target="_blank">
-								<span>Discuss/Help</span>
-							</a>
+						<li class="dropdown">
+							<a class="dropdown-toggle pointer" data-toggle="dropdown" href="#" role="button">Community<span class="caret"></span></a>
+							<ul class="dropdown-menu" aria-labelledby="themes">
+								<li><a href="https://groups.google.com/group/project-lombok">Discuss / Help</a></li>
+								<li><a href="https://github.com/projectlombok/lombok/issues">Issues</a></li>
+								<li><a href="/contributing/index">Documentation for contributors</a></li>
+								<li><a href="/contact">Contact the team behind Project Lombok</a></li>
+							</ul>
 						</li>
 						<li>
-							<a href="/contributing">
-								<span>Contribute</span>
+							<a href="/order-license-info" role="button">
+								<span>Order / Donate</span>
 							</a>
 						</li>
 						<li class="dropdown">
-							<a class="dropdown-toggle pointer" data-toggle="dropdown">Install<span class="caret"></span></a>
+							<a href="/setup/overview" class="smallOnly" role="button"><span>How to use</span></a>
+							<a class="dropdown-toggle pointer wideOnly" data-toggle="dropdown" href="#" role="button">Install<span class="caret"></span></a>
 							<ul class="dropdown-menu" aria-labelledby="themes">
-								<li class="header">Compilers</li>
-								<li class="target"><a href="/setup/javac">Javac</a></li>
-								<li class="target"><a href="/setup/ecj">ecj</a></li>
-								<li class="divider"></li>
-								<li class="header">Build tools</li>
-								<li class="target"><a href="/setup/maven">maven</a></li>
-								<li class="target"><a href="/setup/gradle">gradle</a></li>
-								<li class="target"><a href="/setup/ant">ant</a></li>
-								<li class="target"><a href="/setup/kobalt">kobalt</a></li>
-								<li class="header">IDEs</li>
-								<li class="target"><a href="/setup/eclipse">Eclipse</a></li>
-								<li class="target"><a href="/setup/intellij">IntelliJ IDEA</a></li>
-								<li class="target"><a href="/setup/netbeans">Netbeans</a></li>
-								<li class="target"><a href="/setup/eclipse">MyEclipse</a></li>
-								<li class="target"><a href="/setup/eclipse">Spring Tool Suite</a></li>
-								<li class="target"><a href="/setup/eclipse">JBoss Developer Studio</a></li>
-								<li class="divider"></li>
-								<li class="header">Platforms</li>
-								<li class="target"><a href="/setup/android">Android</a></li>
-								<li class="target"><a href="/setup/gwt">GWT</a></li>
+								<#list setupTargets as cat, tgtList>
+									<li class="header">${cat}</li>
+									<#list tgtList as name, url>
+										<li class="target"><a href="/setup/${url}" role="button">${name}</a></li>
+									</#list>
+									<#sep><li class="divider"></li></#sep>
+								</#list>
 							</ul>
 						</li>
-						<li><a href="/download">Download</a></li>
+						<li><a href="/download" role="button">Download</a></li>
 					</ul>
 				</div>
 			</div>
@@ -122,4 +136,31 @@ ga('send', 'pageview');
 		</footer>
 	</body>
 </html>
+</#macro>
+
+<#macro h1 title class="" id="">
+<#if id == "">
+	<#assign idvalue="*"?no_esc + "${title}"/>
+<#else>
+	<#assign idvalue="${id}"?no_esc>
+</#if>
+<h1<#if class != ""> class="${class}"</#if> id="${idvalue?markup_string?replace("[ _]", "-", "r")?lower_case?replace("[^a-zA-Z0-9-]", "", "r")}">${title}</h1>
+</#macro>
+
+<#macro h2 title class="" id="">
+<#if id == "">
+	<#assign idvalue="*"?no_esc + "${title}"/>
+<#else>
+	<#assign idvalue="${id}"?no_esc>
+</#if>
+<h2<#if class != ""> class="${class}"</#if> id="${idvalue?markup_string?replace("[ _]", "-", "r")?lower_case?replace("[^a-zA-Z0-9-]", "", "r")}">${title}</h2>
+</#macro>
+
+<#macro h3 title class="" id="">
+<#if id == "">
+	<#assign idvalue="*"?no_esc + "${title}"/>
+<#else>
+	<#assign idvalue="${id}"?no_esc>
+</#if>
+<h3<#if class != ""> class="${class}"</#if> id="${idvalue?markup_string?replace("[ _]", "-", "r")?lower_case?replace("[^a-zA-Z0-9-]", "", "r")}">${title}</h3>
 </#macro>

@@ -6,43 +6,38 @@ public class BuilderWithTolerate {
 	}
 	public static class BuilderWithTolerateBuilder {
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		private int value;
 		@Tolerate
 		public BuilderWithTolerateBuilder value(String s) {
 			return this.value(Integer.parseInt(s));
 		}
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		BuilderWithTolerateBuilder() {
 		}
+		/**
+		 * @return {@code this}.
+		 */
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
-		public BuilderWithTolerateBuilder value(final int value) {
+		public BuilderWithTolerate.BuilderWithTolerateBuilder value(final int value) {
 			this.value = value;
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		public BuilderWithTolerate build() {
-			return new BuilderWithTolerate(value);
+			return new BuilderWithTolerate(this.value);
 		}
 		@java.lang.Override
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		public java.lang.String toString() {
 			return "BuilderWithTolerate.BuilderWithTolerateBuilder(value=" + this.value + ")";
 		}
 	}
-	@java.beans.ConstructorProperties({"value"})
 	@java.lang.SuppressWarnings("all")
-	@javax.annotation.Generated("lombok")
 	BuilderWithTolerate(final int value) {
 		this.value = value;
 	}
 	@java.lang.SuppressWarnings("all")
-	@javax.annotation.Generated("lombok")
-	public static BuilderWithTolerateBuilder builder() {
-		return new BuilderWithTolerateBuilder();
+	public static BuilderWithTolerate.BuilderWithTolerateBuilder builder() {
+		return new BuilderWithTolerate.BuilderWithTolerateBuilder();
 	}
 }

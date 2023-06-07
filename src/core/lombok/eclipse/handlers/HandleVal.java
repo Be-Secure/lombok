@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 The Project Lombok Authors.
+ * Copyright (C) 2010-2021 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,27 +23,29 @@ package lombok.eclipse.handlers;
 
 import static lombok.core.handlers.HandlerUtil.handleFlagUsage;
 import static lombok.eclipse.handlers.EclipseHandlerUtil.typeMatches;
+
 import lombok.ConfigurationKeys;
 import lombok.val;
+import lombok.var;
 import lombok.core.HandlerPriority;
 import lombok.eclipse.DeferUntilPostDiet;
 import lombok.eclipse.EclipseASTAdapter;
 import lombok.eclipse.EclipseASTVisitor;
 import lombok.eclipse.EclipseNode;
-import lombok.experimental.var;
+import lombok.spi.Provides;
 
+import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.ArrayInitializer;
 import org.eclipse.jdt.internal.compiler.ast.ForStatement;
 import org.eclipse.jdt.internal.compiler.ast.ForeachStatement;
 import org.eclipse.jdt.internal.compiler.ast.LocalDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.NullLiteral;
 import org.eclipse.jdt.internal.compiler.ast.TypeReference;
-import org.mangosdk.spi.ProviderFor;
 
 /*
- * This class just handles 3 basic error cases. The real meat of eclipse 'val' support is in {@code PatchVal} and {@code PatchValEclipse}.
+ * This class just handles 3 basic error cases. The real meat of eclipse 'val' support is in {@code PatchVal} and {@code PatchValEclipse}
  */
-@ProviderFor(EclipseASTVisitor.class)
+@Provides(EclipseASTVisitor.class)
 @DeferUntilPostDiet
 @HandlerPriority(65536) // 2^16; resolution needs to work, so if the RHS expression is i.e. a call to a generated getter, we have to run after that getter has been generated.
 public class HandleVal extends EclipseASTAdapter {
@@ -74,8 +76,15 @@ public class HandleVal extends EclipseASTAdapter {
 			return;
 		}
 		
-		if (isVal && localNode.directUp().get() instanceof ForStatement) {
+		ASTNode parentRaw = localNode.directUp().get();
+		
+		if (isVal && parentRaw instanceof ForStatement) {
 			localNode.addError("'val' is not allowed in old-style for loops");
+			return;
+		}
+		
+		if (parentRaw instanceof ForStatement && ((ForStatement) parentRaw).initializations != null && ((ForStatement) parentRaw).initializations.length > 1) {
+			localNode.addError("'var' is not allowed in old-style for loops if there is more than 1 initializer");
 			return;
 		}
 		

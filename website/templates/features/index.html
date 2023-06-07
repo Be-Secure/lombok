@@ -1,13 +1,20 @@
 <#import "../_scaffold.html" as main>
 
-<@main.scaffold>
+<@main.scaffold title="Stable">
+	<a class="tidelift-link" href="/tidelift">Get Lombok for Enterprise</a>
 	<div class="page-header top5">
 		<div class="row text-center">
-			<h1>Lombok features.</h1>
+			<@main.h1 title="Lombok features" />
 		</div>
 		<div class="row">
+			The <a href="/api/">Lombok javadoc</a> is available, but we advise these pages.
+			
 			<@main.feature title="val" href="val">
 				Finally! Hassle-free final local variables.
+			</@main.feature>
+
+			<@main.feature title="var" href="var">
+				Mutably! Hassle-free local variables.
 			</@main.feature>
 
 			<@main.feature title="@NonNull" href="NonNull">
@@ -59,6 +66,10 @@
 				<code>synchronized</code> done right: Don't expose your locks.
 			</@main.feature>
 
+			<@main.feature title="@With" href="With">
+				Immutable 'setters' - methods that create a clone but with one changed field.
+			</@main.feature>
+
 			<@main.feature title="@Getter(lazy=true)" href="GetterLazy">
 				Laziness is a virtue!
 			</@main.feature>
@@ -66,10 +77,14 @@
 			<@main.feature title="@Log" href="log">
 				Captain's Log, stardate 24435.7: &quot;What was that line again?&quot;
 			</@main.feature>
+			
+			<@main.feature title="experimental" href="/features/experimental/all">
+				Head to the lab: The new stuff we're working on.
+			</@main.feature>
 		</div>
 
 		<div class="row">
-			<h1>Configuration system</h1>
+			<@main.h1 title="Configuration system" />
 
 			<div class="text-center">
 				Lombok, made to order: <a href="configuration">Configure lombok features</a> in one place for your entire project or even your workspace.
@@ -77,7 +92,7 @@
 		</div>
 
 		<div class="row">
-			<h1 class="text-center">Running delombok</h1>
+			<@main.h1 title="Running delombok" />
 
 			<div>
 				Delombok copies your source files to another directory, replacing all lombok annotations with their desugared form. So, it'll turn <code>@Getter</code> back into the actual getter. It then removes the annotation. This is useful for all sorts of reasons; you can check out what's happening under the hood, if the unthinkable happens and you want to stop using lombok, you can easily remove all traces of it in your source, and you can use delombok to preprocess your source files for source-level tools such as javadoc and GWT. More information about how to run delombok, including instructions for build tools can be found at the <a href="delombok">delombok page</a>.

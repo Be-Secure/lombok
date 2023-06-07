@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 The Project Lombok Authors.
+ * Copyright (C) 2010-2021 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import lombok.core.DiagnosticsReceiver;
 import lombok.core.PostCompilerTransformation;
+import lombok.spi.Provides;
 
-import org.mangosdk.spi.ProviderFor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -37,7 +37,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-@ProviderFor(PostCompilerTransformation.class)
+@Provides
 public class SneakyThrowsRemover implements PostCompilerTransformation {
 	
 	@Override public byte[] applyTransformations(byte[] original, String fileName, final DiagnosticsReceiver diagnostics) {
@@ -47,12 +47,12 @@ public class SneakyThrowsRemover implements PostCompilerTransformation {
 		
 		ClassReader reader = new ClassReader(fixedByteCode);
 		ClassWriter writer = new ClassWriter(reader, 0);
-		
+
 		final AtomicBoolean changesMade = new AtomicBoolean();
 		
 		class SneakyThrowsRemoverVisitor extends MethodVisitor {
 			SneakyThrowsRemoverVisitor(MethodVisitor mv) {
-				super(Opcodes.ASM5, mv);
+				super(Opcodes.ASM9, mv);
 			}
 			
 			private boolean methodInsnQueued = false;
@@ -177,7 +177,7 @@ public class SneakyThrowsRemover implements PostCompilerTransformation {
 			}
 		}
 		
-		reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
+		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 			@Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
 				return new SneakyThrowsRemoverVisitor(super.visitMethod(access, name, desc, signature, exceptions));
 			}

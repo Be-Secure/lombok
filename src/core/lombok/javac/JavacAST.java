@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 The Project Lombok Authors.
+ * Copyright (C) 2009-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,7 @@
  */
 package lombok.javac;
 
+import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URI;
@@ -36,6 +37,9 @@ import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 
 import lombok.core.AST;
+import lombok.core.CleanupRegistry;
+import lombok.core.CleanupTask;
+import lombok.permit.Permit;
 
 import com.sun.tools.javac.code.Source;
 import com.sun.tools.javac.code.Symtab;
@@ -43,10 +47,12 @@ import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.model.JavacTypes;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCAnnotation;
+import com.sun.tools.javac.tree.JCTree.JCArrayTypeTree;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCCatch;
 import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
+import com.sun.tools.javac.tree.JCTree.JCEnhancedForLoop;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCIdent;
@@ -54,8 +60,10 @@ import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.JCTree.JCTry;
 import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
+import com.sun.tools.javac.tree.JCTree.JCWildcard;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.JCDiagnostic;
 import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
 import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Name;
@@ -65,6 +73,7 @@ import com.sun.tools.javac.util.Name;
  * something javac's own AST system does not offer.
  */
 public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
+	private final CleanupRegistry cleanup;
 	private final JavacElements elements;
 	private final JavacTreeMaker treeMaker;
 	private final Symtab symtab;
@@ -72,6 +81,8 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 	private final Log log;
 	private final ErrorLog errorLogger;
 	private final Context context;
+	private static final URI NOT_CALCULATED_MARKER = URI.create("https://projectlombok.org/not/calculated");
+	private URI memoizedAbsoluteFileLocation = NOT_CALCULATED_MARKER;
 	
 	/**
 	 * Creates a new JavacAST of the provided Compilation Unit.
@@ -80,7 +91,7 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 	 * @param context A Context object for interfacing with the compiler.
 	 * @param top The compilation unit, which serves as the top level node in the tree to be built.
 	 */
-	public JavacAST(Messager messager, Context context, JCCompilationUnit top) {
+	public JavacAST(Messager messager, Context context, JCCompilationUnit top, CleanupRegistry cleanup) {
 		super(sourceName(top), PackageName.getPackageName(top), new JavacImportList(top), statementTypes());
 		setTop(buildCompilationUnit(top));
 		this.context = context;
@@ -90,41 +101,110 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 		this.treeMaker = new JavacTreeMaker(TreeMaker.instance(context));
 		this.symtab = Symtab.instance(context);
 		this.javacTypes = JavacTypes.instance(context);
+		this.cleanup = cleanup;
 		clearChanged();
 	}
 	
 	@Override public URI getAbsoluteFileLocation() {
+		if (memoizedAbsoluteFileLocation == NOT_CALCULATED_MARKER) {
+			memoizedAbsoluteFileLocation = getAbsoluteFileLocation((JCCompilationUnit) top().get());
+		}
+		return memoizedAbsoluteFileLocation;
+	}
+	
+	private static Class<?> wrappedFileObjectClass, sbtJavaFileObjectClass, sbtMappedVirtualFileClass, sbtOptionClass;
+	private static Field wrappedFileObjectField, sbtJavaFileObjectField, sbtMappedVirtualFilePathField, sbtMappedVirtualFileRootsField, sbtOptionField;
+	private static Method sbtMapGetMethod;
+	
+	public static URI getAbsoluteFileLocation(JCCompilationUnit cu) {
 		try {
-			JCCompilationUnit cu = (JCCompilationUnit) top().get();
-			return cu.sourcefile.toUri();
+			URI uri = cu.sourcefile.toUri();
+			String fn = uri.toString();
+			if (fn.startsWith("file:")) return uri;
+			URI sbtUri = tryGetSbtFile(cu.sourcefile);
+			if (sbtUri != null) return sbtUri;
+			return uri;
 		} catch (Exception e) {
 			return null;
 		}
 	}
 	
-	private static String sourceName(JCCompilationUnit cu) {
-		return cu.sourcefile == null ? null : cu.sourcefile.toString();
-	}
-	
-	// jdk9 support, types have changed, names stay the same
-	static class PackageName {
-		private static final Method packageNameMethod;
-		
-		static {
-			Method m = null;
-			try {
-				m = JCCompilationUnit.class.getDeclaredMethod("getPackageName");
-			} catch (Exception e) {}
-			packageNameMethod = m;
-		}
-		
-		static String getPackageName(JCCompilationUnit cu) {
-			try {
-				Object pkg = packageNameMethod.invoke(cu);
-				return (pkg instanceof JCFieldAccess || pkg instanceof JCIdent) ? pkg.toString() : null;
-			} catch (Exception e) {}
+	private static URI tryGetSbtFile(JavaFileObject sourcefile) {
+		try {
+			return tryGetSbtFile_(sourcefile);
+		} catch (Exception e) {
 			return null;
 		}
+	}
+	
+	private static URI tryGetSbtFile_(JavaFileObject sourcefile) throws Exception {
+		Class<?> c = sourcefile.getClass();
+		String cn;
+		
+		if (wrappedFileObjectClass == null) {
+			if (!c.getName().equals("com.sun.tools.javac.api.ClientCodeWrapper$WrappedJavaFileObject")) return null;
+			wrappedFileObjectClass = c;
+		}
+		if (c != wrappedFileObjectClass) return null;
+		
+		if (wrappedFileObjectField == null) wrappedFileObjectField = Permit.permissiveGetField(wrappedFileObjectClass.getSuperclass(), "clientFileObject");
+		if (wrappedFileObjectField == null) return null;
+		Object fileObject = wrappedFileObjectField.get(sourcefile);
+		c = fileObject.getClass();
+		
+		if (sbtJavaFileObjectClass == null) {
+			cn = c.getName();
+			if (!cn.startsWith("sbt.") || !cn.endsWith("JavaFileObject")) return null;
+			sbtJavaFileObjectClass = c;
+		}
+		if (sbtJavaFileObjectClass != c) return null;
+		if (sbtJavaFileObjectField == null) sbtJavaFileObjectField = Permit.permissiveGetField(sbtJavaFileObjectClass, "underlying");
+		if (sbtJavaFileObjectField == null) return null;
+		
+		Object mappedVirtualFile = sbtJavaFileObjectField.get(fileObject);
+		c = mappedVirtualFile.getClass();
+		
+		if (sbtMappedVirtualFileClass == null) {
+			cn = c.getName();
+			if (!cn.startsWith("sbt.") || !cn.endsWith("MappedVirtualFile")) return null;
+			sbtMappedVirtualFileClass = c;
+		}
+		if (sbtMappedVirtualFilePathField == null) sbtMappedVirtualFilePathField = Permit.permissiveGetField(sbtMappedVirtualFileClass, "encodedPath");
+		if (sbtMappedVirtualFilePathField == null) return null;
+		if (sbtMappedVirtualFileRootsField == null) sbtMappedVirtualFileRootsField = Permit.permissiveGetField(sbtMappedVirtualFileClass, "rootPathsMap");
+		if (sbtMappedVirtualFileRootsField == null) return null;
+		
+		String encodedPath = (String) sbtMappedVirtualFilePathField.get(mappedVirtualFile);
+		if (!encodedPath.startsWith("${")) {
+			File maybeAbsoluteFile = new File(encodedPath);
+			if (maybeAbsoluteFile.exists()) {
+				return maybeAbsoluteFile.toURI();
+			} else {
+				return null;
+			}
+		}
+		int idx = encodedPath.indexOf('}');
+		if (idx == -1) return null;
+		String base = encodedPath.substring(2, idx);
+		Object roots = sbtMappedVirtualFileRootsField.get(mappedVirtualFile);
+		if (sbtMapGetMethod == null) sbtMapGetMethod = Permit.getMethod(roots.getClass(), "get", Object.class);
+		if (sbtMapGetMethod == null) return null;
+		
+		Object option = sbtMapGetMethod.invoke(roots, base);
+		c = option.getClass();
+		if (sbtOptionClass == null) {
+			if (c.getName().equals("scala.Some")) sbtOptionClass = c;
+		}
+		if (c != sbtOptionClass) return null;
+		if (sbtOptionField == null) sbtOptionField = Permit.permissiveGetField(sbtOptionClass, "value");
+		if (sbtOptionField == null) return null;
+		
+		Object path = sbtOptionField.get(option);
+		return new File(path.toString() + encodedPath.substring(idx + 1)).toURI();
+	}
+	
+	private static String sourceName(JCCompilationUnit cu) {
+		return cu.sourcefile == null ? null : cu.sourcefile.toString();
 	}
 	
 	public Context getContext() {
@@ -148,12 +228,18 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 			String nm = Source.instance(context).name();
 			int underscoreIdx = nm.indexOf('_');
 			if (underscoreIdx > -1) return Integer.parseInt(nm.substring(underscoreIdx + 1));
+			// assume java9+
+			return Integer.parseInt(nm.substring(3));
 		} catch (Exception ignore) {}
 		return 6;
 	}
 	
 	@Override public int getLatestJavaSpecSupported() {
 		return Javac.getJavaCompilerVersion();
+	}
+	
+	public void cleanupTask(String key, JCTree target, CleanupTask task) {
+		cleanup.registerTask(key, target, task);
 	}
 	
 	/** @return A Name object generated for the proper name table belonging to this AST. */
@@ -200,6 +286,8 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 			return buildStatementOrExpression(node);
 		case ANNOTATION:
 			return buildAnnotation((JCAnnotation) node, false);
+		case TYPE_USE:
+			return buildTypeUse(node);
 		default:
 			throw new AssertionError("Did not expect: " + kind);
 		}
@@ -241,6 +329,7 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 		if (setAndGetAsHandled(field)) return null;
 		List<JavacNode> childNodes = new ArrayList<JavacNode>();
 		for (JCAnnotation annotation : field.mods.annotations) addIfNotNull(childNodes, buildAnnotation(annotation, true));
+		addIfNotNull(childNodes, buildTypeUse(field.vartype));
 		addIfNotNull(childNodes, buildExpression(field.init));
 		return putInMap(new JavacNode(this, field, childNodes, Kind.FIELD));
 	}
@@ -249,23 +338,62 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 		if (setAndGetAsHandled(local)) return null;
 		List<JavacNode> childNodes = new ArrayList<JavacNode>();
 		for (JCAnnotation annotation : local.mods.annotations) addIfNotNull(childNodes, buildAnnotation(annotation, true));
+		addIfNotNull(childNodes, buildTypeUse(local.vartype));
 		addIfNotNull(childNodes, buildExpression(local.init));
 		return putInMap(new JavacNode(this, local, childNodes, kind));
 	}
 	
-	private static boolean JCTRY_RESOURCES_FIELD_INITIALIZED;
+	private JavacNode buildTypeUse(JCTree typeUse) {
+		if (setAndGetAsHandled(typeUse)) return null;
+		
+		if (typeUse == null) return null;
+		
+		if (typeUse.getClass().getName().equals("com.sun.tools.javac.tree.JCTree$JCAnnotatedType")) {
+			initJcAnnotatedType(typeUse.getClass());
+			Collection<?> anns = Permit.permissiveReadField(Collection.class, JCANNOTATEDTYPE_ANNOTATIONS, typeUse);
+			JCExpression underlying = Permit.permissiveReadField(JCExpression.class, JCANNOTATEDTYPE_UNDERLYINGTYPE, typeUse);
+			
+			List<JavacNode> childNodes = new ArrayList<JavacNode>();
+			if (anns != null) for (Object annotation : anns) if (annotation instanceof JCAnnotation) addIfNotNull(childNodes, buildAnnotation((JCAnnotation) annotation, true));
+			addIfNotNull(childNodes, buildTypeUse(underlying));
+			return putInMap(new JavacNode(this, typeUse, childNodes, Kind.TYPE_USE));
+		}
+		
+		if (typeUse instanceof JCWildcard) {
+			JCTree inner = ((JCWildcard) typeUse).inner;
+			List<JavacNode> childNodes = inner == null ? Collections.<JavacNode>emptyList() : new ArrayList<JavacNode>();
+			if (inner != null) addIfNotNull(childNodes, buildTypeUse(inner));
+			return putInMap(new JavacNode(this, typeUse, childNodes, Kind.TYPE_USE));
+		}
+		
+		if (typeUse instanceof JCArrayTypeTree) {
+			JCTree inner = ((JCArrayTypeTree) typeUse).elemtype;
+			List<JavacNode> childNodes = inner == null ? Collections.<JavacNode>emptyList() : new ArrayList<JavacNode>();
+			if (inner != null) addIfNotNull(childNodes, buildTypeUse(inner));
+			return putInMap(new JavacNode(this, typeUse, childNodes, Kind.TYPE_USE));
+		}
+		
+		if (typeUse instanceof JCFieldAccess) {
+			JCTree inner = ((JCFieldAccess) typeUse).selected;
+			List<JavacNode> childNodes = inner == null ? Collections.<JavacNode>emptyList() : new ArrayList<JavacNode>();
+			if (inner != null) addIfNotNull(childNodes, buildTypeUse(inner));
+			return putInMap(new JavacNode(this, typeUse, childNodes, Kind.TYPE_USE));
+		}
+		
+		if (typeUse instanceof JCIdent) {
+			return putInMap(new JavacNode(this, typeUse, Collections.<JavacNode>emptyList(), Kind.TYPE_USE));
+		}
+		
+		return null;
+	}
+	
+	private static boolean JCTRY_RESOURCES_FIELD_INITIALIZED = false;
 	private static Field JCTRY_RESOURCES_FIELD;
 	
 	@SuppressWarnings("unchecked")
 	private static List<JCTree> getResourcesForTryNode(JCTry tryNode) {
 		if (!JCTRY_RESOURCES_FIELD_INITIALIZED) {
-			try {
-				JCTRY_RESOURCES_FIELD = JCTry.class.getField("resources");
-			} catch (NoSuchFieldException ignore) {
-				// Java 1.6 or lower won't have this at all.
-			} catch (Exception ignore) {
-				// Shouldn't happen. Best thing we can do is just carry on and break on try/catch.
-			}
+			JCTRY_RESOURCES_FIELD = Permit.permissiveGetField(JCTry.class, "resources");
 			JCTRY_RESOURCES_FIELD_INITIALIZED = true;
 		}
 		
@@ -277,6 +405,27 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 		
 		if (rv instanceof List) return (List<JCTree>) rv;
 		return Collections.emptyList();
+	}
+	
+	private static boolean JCANNOTATEDTYPE_FIELDS_INITIALIZED = false;
+	private static Field JCANNOTATEDTYPE_ANNOTATIONS, JCANNOTATEDTYPE_UNDERLYINGTYPE;
+	private static void initJcAnnotatedType(Class<?> context) {
+		if (JCANNOTATEDTYPE_FIELDS_INITIALIZED) return;
+		JCANNOTATEDTYPE_ANNOTATIONS = Permit.permissiveGetField(context, "annotations");
+		JCANNOTATEDTYPE_UNDERLYINGTYPE = Permit.permissiveGetField(context, "underlyingType");
+		JCANNOTATEDTYPE_FIELDS_INITIALIZED = true;
+	}
+	
+	
+	private static Field JCENHANCEDFORLOOP_VARORRECORDPATTERN_FIELD = Permit.permissiveGetField(JCEnhancedForLoop.class, "varOrRecordPattern");
+	private static JCTree getVarOrRecordPattern(JCEnhancedForLoop loop) {
+		if (JCENHANCEDFORLOOP_VARORRECORDPATTERN_FIELD == null) {
+			return loop.var;
+		}
+		try {
+			return (JCTree) JCENHANCEDFORLOOP_VARORRECORDPATTERN_FIELD.get(loop);
+		} catch (Exception ignore) {}
+		return null;
 	}
 	
 	private JavacNode buildTry(JCTry tryNode) {
@@ -331,10 +480,11 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 	private JavacNode buildStatementOrExpression(JCTree statement) {
 		if (statement == null) return null;
 		if (statement instanceof JCAnnotation) return null;
-		if (statement instanceof JCClassDecl) return buildType((JCClassDecl)statement);
-		if (statement instanceof JCVariableDecl) return buildLocalVar((JCVariableDecl)statement, Kind.LOCAL);
+		if (statement instanceof JCClassDecl) return buildType((JCClassDecl) statement);
+		if (statement instanceof JCVariableDecl) return buildLocalVar((JCVariableDecl) statement, Kind.LOCAL);
 		if (statement instanceof JCTry) return buildTry((JCTry) statement);
-		if (statement.getClass().getSimpleName().equals("JCLambda")) return buildLambda(statement);
+		if (statement.getClass().getName().equals("com.sun.tools.javac.tree.JCTree$JCLambda")) return buildLambda(statement);
+		if (statement instanceof JCEnhancedForLoop) return buildEnhancedForLoop((JCEnhancedForLoop) statement);
 		if (setAndGetAsHandled(statement)) return null;
 		
 		return drill(statement);
@@ -345,11 +495,7 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 	}
 	
 	private JCTree getBody(JCTree jcTree) {
-		try {
-			return (JCTree) getBodyMethod(jcTree.getClass()).invoke(jcTree);
-		} catch (Exception e) {
-			throw Javac.sneakyThrow(e);
-		}
+		return (JCTree) Permit.invokeSneaky(getBodyMethod(jcTree.getClass()), jcTree);
 	}
 	
 	private final static ConcurrentMap<Class<?>, Method> getBodyMethods = new ConcurrentHashMap<Class<?>, Method>();
@@ -360,12 +506,24 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 			return m;
 		}
 		try {
-			m = c.getMethod("getBody");
+			m = Permit.getMethod(c, "getBody");
 		} catch (NoSuchMethodException e) {
 			throw Javac.sneakyThrow(e);
 		}
 		getBodyMethods.putIfAbsent(c, m);
 		return getBodyMethods.get(c);
+	}
+	
+	private JavacNode buildEnhancedForLoop(JCEnhancedForLoop loop) {
+		if (setAndGetAsHandled(loop)) return null;
+		
+		List<JavacNode> childNodes = new ArrayList<JavacNode>();
+		// The order of the child elements is important and must be kept
+		addIfNotNull(childNodes, buildTree(getVarOrRecordPattern(loop), Kind.STATEMENT));
+		addIfNotNull(childNodes, buildTree(loop.expr, Kind.STATEMENT));
+		addIfNotNull(childNodes, buildStatement(loop.body));
+		
+		return putInMap(new JavacNode(this, loop, childNodes, Kind.STATEMENT));
 	}
 	
 	private JavacNode drill(JCTree statement) {
@@ -416,7 +574,7 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 			oldSource = log.useSource(newSource);
 			if (pos == null) pos = astObject.pos();
 		}
-		if (pos != null && attemptToRemoveErrorsInRange) {
+		if (pos != null && node != null && attemptToRemoveErrorsInRange) {
 			removeFromDeferredDiagnostics(pos.getStartPosition(), node.getEndPosition(pos));
 		}
 		try {
@@ -491,22 +649,21 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 			increment(errorCount);
 			error1(pos, message);
 		}
-		
+
 		final void warning(DiagnosticPosition pos, String message) {
 			increment(warningCount);
-			log.warning(pos, "proc.messager", message);
+			warning1(pos, message);
 		}
-		
+
 		final void mandatoryWarning(DiagnosticPosition pos, String message) {
 			increment(warningCount);
-			log.mandatoryWarning(pos, "proc.messager", message);
+			mandatoryWarning1(pos, message);
 		}
-		
-		final void note(DiagnosticPosition pos, String message) {
-			log.note(pos, "proc.messager", message);
-		}
-		
+
 		abstract void error1(DiagnosticPosition pos, String message);
+		abstract void warning1(DiagnosticPosition pos, String message);
+		abstract void mandatoryWarning1(DiagnosticPosition pos, String message);
+		abstract void note(DiagnosticPosition pos, String message);
 		
 		private void increment(Field field) {
 			if (field == null) return;
@@ -519,12 +676,11 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 		}
 		
 		static ErrorLog create(Messager messager, Log log) {
-			Field errorCount = null;
-			try {
-				Field f = messager.getClass().getDeclaredField("errorCount");
-				f.setAccessible(true);
-				errorCount = f;
-			} catch (Throwable t) {}
+			Field errorCount; try {
+				errorCount = Permit.getField(messager.getClass(), "errorCount");
+			} catch (Throwable t) {
+				errorCount = null;
+			}
 			boolean hasMultipleErrors = false;
 			for (Field field : log.getClass().getFields()) {
 				if (field.getName().equals("multipleErrors")) {
@@ -533,26 +689,14 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 				}
 			}
 			if (hasMultipleErrors) return new JdkBefore9(log, messager, errorCount);
-
-			Field warningCount = null;
-			try {
-				Field f = messager.getClass().getDeclaredField("warningCount");
-				f.setAccessible(true);
-				warningCount = f;
-			} catch (Throwable t) {}
-
 			
-			Method logMethod = null;
-			Object multiple = null;
-			try {
-				Class<?> df = Class.forName("com.sun.tools.javac.util.JCDiagnostic$DiagnosticFlag");
-				for (Object constant : df.getEnumConstants()) {
-					if (constant.toString().equals("MULTIPLE")) multiple = constant;
-				}
-				logMethod = log.getClass().getMethod("error", new Class<?>[] {df, DiagnosticPosition.class, String.class, Object[].class});
-			} catch (Throwable t) {}
+			Field warningCount; try {
+				warningCount = Permit.getField(messager.getClass(), "warningCount");
+			} catch (Throwable t) {
+				warningCount = null;
+			}
 			
-			return new Jdk9Plus(log, messager, errorCount, warningCount, logMethod, multiple);
+			return new Jdk9Plus(log, messager, errorCount, warningCount);
 		}
 	}
 	
@@ -570,22 +714,80 @@ public class JavacAST extends AST<JavacAST, JavacNode, JCTree> {
 				log.multipleErrors = prev;
 			}
 		}
+
+		@Override void warning1(DiagnosticPosition pos, String message) {
+			log.warning(pos, "proc.messager", message);
+		}
+
+		@Override void mandatoryWarning1(DiagnosticPosition pos, String message) {
+			log.mandatoryWarning(pos, "proc.messager", message);
+		}
+
+		@Override void note(DiagnosticPosition pos, String message) {
+			log.note(pos, "proc.messager", message);
+		}
 	}
 	
 	static class Jdk9Plus extends ErrorLog {
-		private final Object multiple;
-		private final Method logMethod;
+		private static final String PROC_MESSAGER = "proc.messager";
+		private Object multiple;
+		private Method errorMethod, warningMethod, mandatoryWarningMethod, noteMethod;
+		private Method errorKey, warningKey, noteKey;
+		private JCDiagnostic.Factory diags;
 		
-		private Jdk9Plus(Log log, Messager messager, Field errorCount, Field warningCount, Method logMethod, Object multiple) {
+		private Jdk9Plus(Log log, Messager messager, Field errorCount, Field warningCount) {
 			super(log, messager, errorCount, warningCount);
-			this.logMethod = logMethod;
-			this.multiple = multiple;
+
+			try {
+				final String jcd = "com.sun.tools.javac.util.JCDiagnostic";
+				Class<?> df = Class.forName(jcd + "$DiagnosticFlag");
+				for (Object constant : df.getEnumConstants()) {
+					if (constant.toString().equals("MULTIPLE")) this.multiple = constant;
+				}
+
+				Class<?> errorCls = Class.forName(jcd + "$Error");
+				Class<?> warningCls = Class.forName(jcd + "$Warning");
+				Class<?> noteCls = Class.forName(jcd + "$Note");
+				
+				Class<?> lc = log.getClass();
+				this.errorMethod = Permit.getMethod(lc, "error", df, DiagnosticPosition.class, errorCls);
+				this.warningMethod = Permit.getMethod(lc, "warning", DiagnosticPosition.class, warningCls);
+				this.mandatoryWarningMethod = Permit.getMethod(lc, "mandatoryWarning", DiagnosticPosition.class, warningCls);
+				this.noteMethod = Permit.getMethod(lc, "note", DiagnosticPosition.class, noteCls);
+
+				Field diagsField = Permit.getField(lc.getSuperclass(), "diags");
+				this.diags = (JCDiagnostic.Factory) diagsField.get(log);
+
+				Class<?> dc = this.diags.getClass();
+				this.errorKey = Permit.getMethod(dc, "errorKey", String.class, Object[].class);
+				this.warningKey = Permit.getMethod(dc, "warningKey", String.class, Object[].class);
+				this.noteKey = Permit.getMethod(dc, "noteKey", String.class, Object[].class);
+			} catch (Throwable t) {
+				//t.printStackTrace();
+			}
 		}
 		
 		@Override void error1(DiagnosticPosition pos, String message) {
-			try {
-				logMethod.invoke(multiple, pos, "proc.messager", message);
-			} catch (Throwable t) {}
+			Object error = Permit.invokeSneaky(this.errorKey, diags, PROC_MESSAGER, new Object[] { message });
+			if (error != null) Permit.invokeSneaky(errorMethod, log, multiple, pos, error);
+		}
+
+		@Override
+		void warning1(DiagnosticPosition pos, String message) {
+			Object warning = Permit.invokeSneaky(this.warningKey, diags, PROC_MESSAGER, new Object[] { message });
+			if (warning != null) Permit.invokeSneaky(warningMethod, log, pos, warning);
+		}
+
+		@Override
+		void mandatoryWarning1(DiagnosticPosition pos, String message) {
+			Object warning = Permit.invokeSneaky(this.warningKey, diags, PROC_MESSAGER, new Object[] { message });
+			if (warning != null) Permit.invokeSneaky(mandatoryWarningMethod, log, pos, warning);
+		}
+
+		@Override
+		void note(DiagnosticPosition pos, String message) {
+			Object note = Permit.invokeSneaky(this.noteKey, diags, PROC_MESSAGER, new Object[] { message });
+			if (note != null) Permit.invokeSneaky(noteMethod, log, pos, note);
 		}
 	}
 }

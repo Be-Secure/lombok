@@ -6,7 +6,6 @@ class BuilderSingularMaps<K, V> {
 	@SuppressWarnings("all")
 	private Map rawMap;
 	private Map<String, V> stringMap;
-	@java.beans.ConstructorProperties({"women", "men", "rawMap", "stringMap"})
 	@SuppressWarnings("all")
 	BuilderSingularMaps(Map<K, V> women, SortedMap<K, ? extends Number> men, Map rawMap, Map<String, V> stringMap) {
 		this.women = women;
@@ -36,7 +35,7 @@ class BuilderSingularMaps<K, V> {
 		BuilderSingularMapsBuilder() {
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> woman(K womanKey, V womanValue) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> woman(K womanKey, V womanValue) {
 			if (this.women$key == null) {
 				this.women$key = new java.util.ArrayList<K>();
 				this.women$value = new java.util.ArrayList<V>();
@@ -46,7 +45,10 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> women(java.util.Map<? extends K, ? extends V> women) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> women(java.util.Map<? extends K, ? extends V> women) {
+			if (women == null) {
+				throw new NullPointerException("women cannot be null");
+			}
 			if (this.women$key == null) {
 				this.women$key = new java.util.ArrayList<K>();
 				this.women$value = new java.util.ArrayList<V>();
@@ -58,7 +60,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> clearWomen() {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> clearWomen() {
 			if (this.women$key != null) {
 				this.women$key.clear();
 				this.women$value.clear();
@@ -66,7 +68,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> man(K manKey, Number manValue) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> man(K manKey, Number manValue) {
 			if (this.men$key == null) {
 				this.men$key = new java.util.ArrayList<K>();
 				this.men$value = new java.util.ArrayList<Number>();
@@ -76,7 +78,10 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> men(java.util.Map<? extends K, ? extends Number> men) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> men(java.util.Map<? extends K, ? extends Number> men) {
+			if (men == null) {
+				throw new NullPointerException("men cannot be null");
+			}
 			if (this.men$key == null) {
 				this.men$key = new java.util.ArrayList<K>();
 				this.men$value = new java.util.ArrayList<Number>();
@@ -88,7 +93,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> clearMen() {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> clearMen() {
 			if (this.men$key != null) {
 				this.men$key.clear();
 				this.men$value.clear();
@@ -96,7 +101,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> rawMap(Object rawMapKey, Object rawMapValue) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> rawMap(Object rawMapKey, Object rawMapValue) {
 			if (this.rawMap$key == null) {
 				this.rawMap$key = new java.util.ArrayList<Object>();
 				this.rawMap$value = new java.util.ArrayList<Object>();
@@ -106,7 +111,10 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> rawMap(java.util.Map<?, ?> rawMap) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> rawMap(java.util.Map<?, ?> rawMap) {
+			if (rawMap == null) {
+				throw new NullPointerException("rawMap cannot be null");
+			}
 			if (this.rawMap$key == null) {
 				this.rawMap$key = new java.util.ArrayList<Object>();
 				this.rawMap$value = new java.util.ArrayList<Object>();
@@ -118,7 +126,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> clearRawMap() {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> clearRawMap() {
 			if (this.rawMap$key != null) {
 				this.rawMap$key.clear();
 				this.rawMap$value.clear();
@@ -126,7 +134,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> stringMap(String stringMapKey, V stringMapValue) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> stringMap(String stringMapKey, V stringMapValue) {
 			if (this.stringMap$key == null) {
 				this.stringMap$key = new java.util.ArrayList<String>();
 				this.stringMap$value = new java.util.ArrayList<V>();
@@ -136,7 +144,10 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> stringMap(java.util.Map<? extends String, ? extends V> stringMap) {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> stringMap(java.util.Map<? extends String, ? extends V> stringMap) {
+			if (stringMap == null) {
+				throw new NullPointerException("stringMap cannot be null");
+			}
 			if (this.stringMap$key == null) {
 				this.stringMap$key = new java.util.ArrayList<String>();
 				this.stringMap$value = new java.util.ArrayList<V>();
@@ -148,7 +159,7 @@ class BuilderSingularMaps<K, V> {
 			return this;
 		}
 		@SuppressWarnings("all")
-		public BuilderSingularMapsBuilder<K, V> clearStringMap() {
+		public BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> clearStringMap() {
 			if (this.stringMap$key != null) {
 				this.stringMap$key.clear();
 				this.stringMap$value.clear();
@@ -208,7 +219,7 @@ class BuilderSingularMaps<K, V> {
 		}
 	}
 	@SuppressWarnings("all")
-	public static <K, V> BuilderSingularMapsBuilder<K, V> builder() {
-		return new BuilderSingularMapsBuilder<K, V>();
+	public static <K, V> BuilderSingularMaps.BuilderSingularMapsBuilder<K, V> builder() {
+		return new BuilderSingularMaps.BuilderSingularMapsBuilder<K, V>();
 	}
 }

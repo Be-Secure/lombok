@@ -8,18 +8,18 @@
 
 <#macro section title>
 	<div class="row">
-		<h3>${title}</h3>
+		<@main.h2 title="${title}" />
 
 		<#nested>
 	</div>
 </#macro>
 
 <#macro scaffold title load=[]>
-	<@main.scaffold load>
+	<@main.scaffold load title>
 		<div class="page-header top5" id="featureContent">
 			<div class="row text-center">
 				<div class="header-group">
-					<h1>${title}</h1>
+					<@main.h1 title="${title}" />
 				</div>
 			</div>
 			<#nested>

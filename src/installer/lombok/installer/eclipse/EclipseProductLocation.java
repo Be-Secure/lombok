@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2016 The Project Lombok Authors.
+ * Copyright (C) 2009-2017 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -256,11 +256,11 @@ public final class EclipseProductLocation extends IdeLocation {
 	 */
 	@Override
 	public String install() throws InstallException {
-		// For whatever reason, relative paths in your eclipse.ini file don't work on linux, but only for -javaagent.
-		// If someone knows how to fix this, please do so, as this current hack solution (putting the absolute path
-		// to the jar files in your eclipse.ini) means you can't move your eclipse around on linux without lombok
-		// breaking it. NB: rerunning lombok.jar installer and hitting 'update' will fix it if you do that.
-		boolean fullPathRequired = OsUtils.getOS() == OsUtils.OS.UNIX || System.getProperty("lombok.installer.fullpath") != null;
+		// On Linux, for whatever reason, relative paths in your eclipse.ini file don't work, but only for -javaagent.
+		// On Windows, since the Oomph, the generated shortcut starts in the wrong directory.
+		// So the default is to use absolute paths, breaking lombok when you move the eclipse directory.
+		// Or not break when you copy your directory, but break later when you remove the original one.
+		boolean fullPathRequired = !"false".equals(System.getProperty("lombok.installer.fullpath", "true"));
 		
 		boolean installSucceeded = false;
 		StringBuilder newContents = new StringBuilder();
@@ -294,10 +294,12 @@ public final class EclipseProductLocation extends IdeLocation {
 				try {
 					lombokJar.delete();
 				} catch (Throwable ignore) { /* Nothing we can do about that. */ }
-				if (!readSucceeded) throw new InstallException(
-						"I can't read my own jar file. I think you've found a bug in this installer!\nI suggest you restart it " +
+				if (!readSucceeded) {
+					throw new InstallException(
+						"I can't read my own jar file (trying: " + ourJar.toString() + "). I think you've found a bug in this installer!\nI suggest you restart it " +
 						"and use the 'what do I do' link, to manually install lombok. Also, tell us about this at:\n" +
-						"http://groups.google.com/group/project-lombok - Thanks!", e);
+						"http://groups.google.com/group/project-lombok - Thanks!\n\n[DEBUG INFO] " + e.getClass() + ": " + e.getMessage() + "\nBase: " + OsUtils.class.getResource("OsUtils.class"), e);
+				}
 				throw new InstallException("I can't write to your " + descriptor.getProductName() + " directory at " + name + generateWriteErrorMessage(), e);
 			}
 		}
@@ -345,8 +347,10 @@ public final class EclipseProductLocation extends IdeLocation {
 				pathPrefix = pathToLombokJarPrefix;
 			}
 			
+			// NB: You may be tempted to escape this, but don't; there is no possibility to escape this, but
+			// eclipse/java reads the string following the colon in 'raw' fashion. Spaces, colons - all works fine.
 			newContents.append(String.format(
-					"-javaagent:%s", escapePath(pathPrefix + "lombok.jar"))).append(OS_NEWLINE);
+				"-javaagent:%s", pathPrefix + "lombok.jar")).append(OS_NEWLINE);
 			
 			FileOutputStream fos = new FileOutputStream(eclipseIniPath);
 			try {

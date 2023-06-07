@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
 /**
  * Causes lombok to generate a logger field.
  * <p>
- * Complete documentation is found at <a href="https://projectlombok.org/features/Log">the project lombok features page for lombok log annotations</a>.
+ * Complete documentation is found at <a href="https://projectlombok.org/features/log">the project lombok features page for lombok log annotations</a>.
  * <p>
  * Example:
  * <pre>
@@ -55,6 +55,8 @@ import java.lang.annotation.Target;
  * @see lombok.extern.slf4j.Slf4j &#64;Slf4j
  * @see lombok.extern.slf4j.XSlf4j &#64;XSlf4j
  * @see lombok.extern.jbosslog.JBossLog &#64;JBossLog
+ * @see lombok.extern.flogger.Flogger &#64;Flogger
+ * @see lombok.CustomLog &#64;CustomLog
  */
 @Retention(RetentionPolicy.SOURCE)
 @Target(ElementType.TYPE)

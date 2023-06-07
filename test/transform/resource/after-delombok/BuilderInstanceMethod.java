@@ -4,63 +4,62 @@ class BuilderInstanceMethod<T> {
 		return "" + show + yes + also + $andMe;
 	}
 	@java.lang.SuppressWarnings("all")
-	@javax.annotation.Generated("lombok")
 	public class StringBuilder {
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		private int show;
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		private int yes;
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		private List<T> also;
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		private int $andMe;
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		StringBuilder() {
 		}
+		/**
+		 * @return {@code this}.
+		 */
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
-		public StringBuilder show(final int show) {
+		public BuilderInstanceMethod<T>.StringBuilder show(final int show) {
 			this.show = show;
 			return this;
 		}
+		/**
+		 * @return {@code this}.
+		 */
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
-		public StringBuilder yes(final int yes) {
+		public BuilderInstanceMethod<T>.StringBuilder yes(final int yes) {
 			this.yes = yes;
 			return this;
 		}
+		/**
+		 * @return {@code this}.
+		 */
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
-		public StringBuilder also(final List<T> also) {
+		public BuilderInstanceMethod<T>.StringBuilder also(final List<T> also) {
 			this.also = also;
 			return this;
 		}
+		/**
+		 * @return {@code this}.
+		 */
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
-		public StringBuilder $andMe(final int $andMe) {
+		public BuilderInstanceMethod<T>.StringBuilder $andMe(final int $andMe) {
 			this.$andMe = $andMe;
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		public String build() {
-			return BuilderInstanceMethod.this.create(show, yes, also, $andMe);
+			return BuilderInstanceMethod.this.create(this.show, this.yes, this.also, this.$andMe);
 		}
 		@java.lang.Override
 		@java.lang.SuppressWarnings("all")
-		@javax.annotation.Generated("lombok")
 		public java.lang.String toString() {
 			return "BuilderInstanceMethod.StringBuilder(show=" + this.show + ", yes=" + this.yes + ", also=" + this.also + ", $andMe=" + this.$andMe + ")";
 		}
 	}
 	@java.lang.SuppressWarnings("all")
-	@javax.annotation.Generated("lombok")
-	public StringBuilder builder() {
-		return new StringBuilder();
+	public BuilderInstanceMethod<T>.StringBuilder builder() {
+		return this.new StringBuilder();
 	}
 }

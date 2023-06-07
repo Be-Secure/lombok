@@ -1,12 +1,15 @@
 <#import "../../_scaffold.html" as main>
 <#import "../_features.html" as f>
 
-<@main.scaffold>
+<@main.scaffold title="Experimental">
+	<a class="tidelift-link" href="/tidelift">Get Lombok for Enterprise</a>
 	<div class="page-header top5">
 		<div class="row text-center">
-			<h1>Lombok experimental features</h1>
+			<@main.h1 title="Lombok experimental features" />
 		</div>
 		<div class="row">
+			The <a href="/api/">Lombok javadoc</a> is available, but we advise these pages.
+
 			<p>
 				Experimental features are available in your normal lombok installation, but are not as robustly supported as lombok's main features. In particular, experimental features:
 				<ul>
@@ -25,10 +28,6 @@
 			</p>
 		</div>
 		<div class="row">
-			<@main.feature title="var" href="var">
-				Modifiable local variables with a type inferred by assigning value.
-			</@main.feature>
-
 			<@main.feature title="@Accessors" href="Accessors">
 				A more fluent API for getters and setters.
 			</@main.feature>
@@ -45,10 +44,6 @@
 				Don't lose your composition.
 			</@main.feature>
 
-			<@main.feature title="@Wither" href="Wither">
-				Immutable 'setters' - methods that create a clone but with one changed field.
-			</@main.feature>
-
 			<@main.feature title="onMethod= / onConstructor= / onParam=" href="onX">
 				Sup dawg, we heard you like annotations, so we put annotations in your annotations so you can annotate while you're annotating.
 			</@main.feature>
@@ -59,6 +54,26 @@
 
 			<@main.feature title="@Helper" href="Helper">
 				With a little help from my friends... Helper methods for java.
+			</@main.feature>
+
+			<@main.feature title="@FieldNameConstants" href="FieldNameConstants">
+				Name... that... field! String constants for your field's names.
+			</@main.feature>
+
+			<@main.feature title="@SuperBuilder" href="SuperBuilder">
+				Bob now knows his ancestors: Builders with fields from superclasses, too.
+			</@main.feature>
+
+			<@main.feature title="@Tolerate" href="Tolerate">
+				Skip, jump, and forget! Make lombok disregard an existing method or constructor.
+			</@main.feature>
+
+			<@main.feature title="@Jacksonized" href="Jacksonized">
+				Bob, meet Jackson. Lets make sure you become fast friends.
+			</@main.feature>
+
+			<@main.feature title="@StandardException" href="StandardException">
+				Standard.. Exceptional? This is not just an oxymoron, it's convenient!
 			</@main.feature>
 		</div>
 
@@ -78,6 +93,12 @@
 				</@main.feature>
 				<@main.feature title="@Builder: promoted" href="/features/Builder">
 					<code>@Builder</code> is a solid base to build APIs on, and has been moved to the main package.
+				</@main.feature>
+				<@main.feature title="@Wither: renamed to @With, and promoted" href="/features/With">
+					Immutable 'setters' - methods that create a clone but with one changed field.
+				</@main.feature>
+				<@main.feature title="var" href="/features/var">
+					Modifiable local variables with a type inferred by assigning value.
 				</@main.feature>
 			</div>
 		</div>

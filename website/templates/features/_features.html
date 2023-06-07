@@ -14,14 +14,14 @@
 
 <#macro overview>
 	<div class="row">
-		<h3>Overview</h3>
+		<@main.h2 title="Overview" />
 		<#nested>
 	</div>
 </#macro>
 
 <#macro experimental>
 	<div class="row">
-		<h3>Experimental</h3>
+		<@main.h2 title="Experimental" />
 
 		Experimental because:
 		<#nested>
@@ -30,14 +30,14 @@
 
 <#macro snippets name>
 	<div class="row container-fluid">
-		<div class="col-lg-6">
-			<h3>With Lombok</h3>
+		<div class="snippet-col first-snippet">
+			<@main.h2 title="With Lombok" />
 
 			<div class="snippet">${usages.pre(name)?no_esc}</div>
 		</div>
 		<div class="sep"></div>
-		<div class="col-lg-6">
-			<h3>Vanilla Java</h3>
+		<div class="snippet-col second-snippet">
+			<@main.h2 title="Vanilla Java" />
 
 			<div class="snippet">${usages.post(name)?no_esc}</div>
 		</div>
@@ -46,7 +46,7 @@
 
 <#macro confKeys>
 	<div class="row">
-		<h3>Supported configuration keys:</h3>
+		<@main.h2 title="Supported configuration keys:" />
 		<dl>
 			<#nested>
 		</dl>
@@ -55,7 +55,7 @@
 
 <#macro smallPrint>
 	<div class="row">
-		<h3>Small print</h3>
+		<@main.h2 title="Small print" />
 
 		<div class="smallprint">
 			<#nested>
@@ -64,13 +64,14 @@
 </#macro>
 
 <#macro scaffold title logline load=[]>
-	<@main.scaffold load>
+	<@main.scaffold load title>
+		<a class="tidelift-link" href="/tidelift">Get Lombok for Enterprise</a>
 		<div class="page-header top5" id="featureContent">
 			<div class="row text-center">
 				<div class="header-group">
-					<h1>${title}</h1>
+					<@main.h1 title="${title}" />
 
-					<h3>${logline?no_esc}</h3>
+					<@main.h2 title="${logline?no_esc}" />
 				</div>
 			</div>
 			<#nested>
